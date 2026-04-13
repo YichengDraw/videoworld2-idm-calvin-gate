@@ -1,0 +1,22 @@
+data:
+  dataset_type: mock
+  mock_root: ../../datasets/mock_robot
+  mock_train_episodes: 80
+  mock_val_episodes: 24
+  train_manifest: ../../datasets/mock_robot/train_manifest.json
+  val_manifest: ../../datasets/mock_robot/val_manifest.json
+  train_index: ../../cache/mock_robot/train_windows.json
+  val_index: ../../cache/mock_robot/val_windows.json
+  train_cache: ../../cache/mock_robot/train_local_codes.pt
+  val_cache: ../../cache/mock_robot/val_local_codes.pt
+  history_frames: 4
+  past_action_hist: 4
+  future_video_horizon: 8
+  action_chunk: 8
+  stride: 4
+  image_size: 64
+  proprio_dim: 4
+  use_proprio: true
+  use_lang: false
+  limit_train_windows: 320
+  limit_val_windows: 96

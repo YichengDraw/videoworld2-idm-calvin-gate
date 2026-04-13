@@ -1,0 +1,134 @@
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+import torch
+import torch.nn.functional as F
+
+from videoworld2.robot_idm.models.dldm_local_adapter import DLDMLocalAdapter
+from videoworld2.robot_idm.train.common import batch_to_state_encoder_inputs, ensure_code_caches, make_dataloaders, make_output_dir, maybe_resume_training
+from videoworld2.robot_idm.utils.checkpoint import load_checkpoint, save_checkpoint
+from videoworld2.robot_idm.utils.config import load_config
+from videoworld2.robot_idm.utils.factory import build_direct_policy, build_state_encoder
+from videoworld2.robot_idm.utils.logging_utils import ExperimentLogger
+from videoworld2.robot_idm.utils.metrics import action_mse, detach_metrics, discounted_gaussian_nll
+from videoworld2.robot_idm.utils.runtime import resolve_device, seed_all, to_device
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("config", type=str)
+    parser.add_argument("--resume", type=str, default=None)
+    parser.add_argument("--device", type=str, default="auto")
+    args = parser.parse_args()
+
+    cfg = load_config(args.config)
+    seed_all(int(cfg["training"].get("seed", 7)))
+    device = resolve_device(args.device)
+    adapter = DLDMLocalAdapter(cfg["adapter"]).to(device)
+    ensure_code_caches(cfg, adapter=adapter, device=device)
+
+    teacher_checkpoint = cfg.get("distill", {}).get("teacher_checkpoint")
+    teacher_encoder = None
+    teacher_idm = None
+    if teacher_checkpoint:
+        if not Path(teacher_checkpoint).is_absolute():
+            teacher_checkpoint = str((Path(cfg["_meta"]["config_path"]).parent / teacher_checkpoint).resolve())
+        teacher_state = load_checkpoint(teacher_checkpoint, map_location=device)
+        from videoworld2.robot_idm.utils.factory import build_idm
+
+        teacher_encoder = build_state_encoder(cfg).to(device)
+        teacher_idm = build_idm(cfg, action_dim=int(cfg["data"].get("action_dim", 2))).to(device)
+        teacher_encoder.load_state_dict(teacher_state["state_encoder"], strict=False)
+        teacher_idm.load_state_dict(teacher_state["idm"], strict=False)
+        teacher_encoder.eval()
+        teacher_idm.eval()
+
+    train_loader, val_loader = make_dataloaders(cfg, use_latent_cache=True)
+    action_dim = next(iter(train_loader))["action_chunk"].size(-1)
+    state_encoder = build_state_encoder(cfg).to(device)
+    student = build_direct_policy(cfg, action_dim=action_dim).to(device)
+    optimizer = torch.optim.AdamW(
+        list(state_encoder.parameters()) + list(student.parameters()),
+        lr=float(cfg["training"].get("idm_lr", 3e-4)),
+        weight_decay=float(cfg["training"].get("weight_decay", 1e-4)),
+    )
+    output_dir = make_output_dir(cfg)
+    logger = ExperimentLogger(output_dir, cfg)
+    start_epoch, global_step, best_metric = maybe_resume_training(
+        output_dir,
+        modules={"state_encoder": state_encoder, "direct_policy": student},
+        optimizer=optimizer,
+        explicit_resume=args.resume,
+    )
+    if best_metric == float("-inf"):
+        best_metric = float("inf")
+
+    def run_epoch(data_loader, training: bool) -> dict[str, float]:
+        state_encoder.train(training)
+        student.train(training)
+        totals = {"action_nll": 0.0, "action_mse": 0.0}
+        count = 0
+        for batch in data_loader:
+            batch = to_device(batch, device)
+            state_inputs = batch_to_state_encoder_inputs(batch)
+            state_tokens, _ = state_encoder(**state_inputs)
+            mean, log_std = student(
+                state_tokens=state_tokens,
+                embodiment_id=batch["embodiment_id"].long(),
+                past_action_hist=batch["past_action_hist"],
+            )
+            nll = discounted_gaussian_nll(mean, log_std, batch["action_chunk"], gamma=float(cfg["training"].get("gamma_discount", 0.97)))
+            mse = action_mse(mean, batch["action_chunk"])
+            loss = nll + float(cfg.get("distill", {}).get("lambda_bc", 1.0)) * mse
+            if teacher_encoder is not None and teacher_idm is not None:
+                with torch.no_grad():
+                    teacher_tokens, _ = teacher_encoder(**state_inputs)
+                    teacher_mean, _ = teacher_idm(
+                        state_tokens=teacher_tokens,
+                        future_code_embeds=batch["future_code_embeds"],
+                        past_action_hist=batch["past_action_hist"],
+                        embodiment_id=batch["embodiment_id"].long(),
+                    )
+                loss = loss + float(cfg.get("distill", {}).get("lambda_kl", 0.5)) * F.mse_loss(mean, teacher_mean)
+
+            if training:
+                optimizer.zero_grad(set_to_none=True)
+                loss.backward()
+                optimizer.step()
+
+            batch_size = batch["action_chunk"].size(0)
+            totals["action_nll"] += float(nll.detach().cpu()) * batch_size
+            totals["action_mse"] += float(mse.detach().cpu()) * batch_size
+            count += batch_size
+        return {key: value / max(count, 1) for key, value in totals.items()}
+
+    max_epochs = int(cfg["training"].get("max_epochs", 3))
+    for epoch in range(start_epoch, max_epochs):
+        train_metrics = run_epoch(train_loader, training=True)
+        val_metrics = run_epoch(val_loader, training=False)
+        metric = val_metrics["action_nll"]
+        is_best = metric < best_metric
+        best_metric = min(best_metric, metric)
+        logger.log(global_step + epoch + 1, {f"train/{k}": v for k, v in train_metrics.items()} | {f"val/{k}": v for k, v in val_metrics.items()})
+        save_checkpoint(
+            output_dir,
+            {
+                "config": cfg,
+                "epoch": epoch + 1,
+                "global_step": global_step + epoch + 1,
+                "best_metric": best_metric,
+                "state_encoder": state_encoder.state_dict(),
+                "direct_policy": student.state_dict(),
+                "optimizer": optimizer.state_dict(),
+            },
+            is_best=is_best,
+        )
+        print(detach_metrics({f"train/{k}": torch.tensor(v) for k, v in train_metrics.items()} | {f"val/{k}": torch.tensor(v) for k, v in val_metrics.items()}))
+
+    logger.finish()
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE and OS noise
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Data and large artifacts
+artifacts/
+cache/
+datasets/
+outputs/
+infer_output/
+runs/
+wandb/
+**/wandb/
+**/checkpoints/
+
+# Model files and binary experiment outputs
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.npy
+*.npz
+*.tar
+*.tar.gz
+*.zip
+
+# Local machine and secret files
+.env
+.env.*
+remote_instance*.json
+remote_code_bundle.zip

@@ -1,0 +1,218 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=0.82in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage[table]{xcolor}
+\usepackage{fancyhdr}
+\usepackage{longtable}
+
+\definecolor{ReportBlue}{HTML}{17324D}
+\definecolor{ReportAccent}{HTML}{1F6FA5}
+\definecolor{ReportSoft}{HTML}{EEF4F8}
+\definecolor{ReportLine}{HTML}{C7D5E1}
+\definecolor{ReportWarn}{HTML}{8C1D18}
+\definecolor{ReportGood}{HTML}{1E6A39}
+
+\hypersetup{
+  colorlinks=true,
+  urlcolor=ReportAccent,
+  linkcolor=ReportAccent
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textcolor{ReportBlue}{VideoWorld2-IDM Status Report}}
+\fancyhead[R]{\textcolor{ReportBlue}{2026-04-11}}
+\fancyfoot[C]{\thepage}
+\setlength{\headheight}{14pt}
+\setlist[itemize]{leftmargin=1.2em, itemsep=0.22em, topsep=0.35em}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+\newcommand{\ResultBox}[1]{%
+  \noindent
+  \fcolorbox{ReportLine}{ReportSoft}{%
+    \parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}{#1}
+  }%
+}
+
+\begin{document}
+
+\begin{center}
+{\LARGE\bfseries \textcolor{ReportBlue}{VideoWorld2-IDM Artifact Rescue and Gate Status}}\\[0.45em]
+{\large \textcolor{ReportAccent}{Concrete report of the work completed after the latest CALVIN gate instruction}}\\[0.7em]
+{\normalsize Repository: cleaned public repository snapshot}\\
+{\normalsize Report date: 2026-04-11}
+\end{center}
+
+\vspace{0.5em}
+
+\ResultBox{
+\textbf{Executive summary.}
+The mandatory artifact rescue step is complete. I restarted the rented remote instance only long enough to pull back the available CALVIN gate artifacts, verified the recovered files locally, and stopped the instance again to stop billing. The rescued package now preserves the latent caches, window indexes, train/validation manifests, checkpoint files, resolved configs, and offline-evaluation outputs from the completed 4090 run.
+
+The later tasks in the new instruction block are \textbf{not completed yet}. The repository still contains only a mock closed-loop evaluator, and the rescued CALVIN manifests still point to remote absolute dataset roots. Therefore there is \textbf{no valid real CALVIN closed-loop verdict yet}. The strongest verified result available right now remains the previously completed \texttt{VW2\_hidden\_mlp\_action\_head} offline baseline, while \texttt{History\_IDM\_GTcode} remains the best GT-code IDM variant but does not beat that MLP-head baseline on offline action error.
+}
+
+\section*{1. Requested Scope}
+The latest instruction set required:
+\begin{itemize}
+  \item \textbf{Task 0}: rescue the remote artifacts first; stop the project immediately if rescue fails.
+  \item \textbf{Task 1}: add a \emph{real} CALVIN closed-loop evaluator and matching config.
+  \item \textbf{Task 2}: add the missing decision metrics and debug metrics.
+  \item \textbf{Task 3}: run a fixed 50-episode deterministic adjudication set.
+  \item \textbf{Task 4}: output a one-table stop/go verdict.
+\end{itemize}
+
+This report separates \textbf{what is already finished} from \textbf{what is still pending}, because the completed work and the final requested verdict are not the same thing.
+
+\section*{2. Completed Work}
+\textbf{2.1 Remote artifact rescue.}
+\begin{itemize}
+  \item Restarted the remote 4090 instance only for extraction.
+  \item Pulled artifacts to a local rescue directory that is intentionally not versioned in this repository.
+  \item Verified that the recovered files are readable and present with the expected sizes.
+  \item Stopped the remote instance again at 2026-04-11 21:21 +08:00 to avoid idle billing.
+\end{itemize}
+
+\textbf{2.2 Rescue result.}
+\begin{center}
+\small
+\begin{tabular}{@{}l l l@{}}
+\toprule
+\textbf{Artifact group} & \textbf{Recovered content} & \textbf{Status} \\
+\midrule
+Latent caches & \shortstack[l]{\texttt{train\_local\_codes.pt},\\ \texttt{val\_local\_codes.pt}} & \textcolor{ReportGood}{Recovered} \\
+Window indexes & \shortstack[l]{\texttt{train\_windows.json},\\ \texttt{val\_windows.json}} & \textcolor{ReportGood}{Recovered} \\
+CALVIN manifests & \shortstack[l]{\texttt{train\_manifest.json},\\ \texttt{val\_manifest.json}} & \textcolor{ReportGood}{Recovered} \\
+Model checkpoints & \shortstack[l]{\texttt{BC\_vis}, \texttt{BC\_vis\_proprio},\\ \texttt{Pair\_IDM\_GTcode}, \texttt{History\_IDM\_GTcode},\\ \texttt{VW2\_hidden\_mlp\_action\_head}} & \textcolor{ReportGood}{Recovered} \\
+Configs and metrics & \shortstack[l]{\texttt{resolved\_config.yaml}, \texttt{offline\_eval.json},\\ \texttt{metrics.jsonl} per recovered model} & \textcolor{ReportGood}{Recovered} \\
+Standalone normalizer file & \shortstack[l]{No separate normalizer artifact existed\\ on the remote run output} & \textcolor{ReportWarn}{Not present} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{2.3 Concrete recovered files.}
+\begin{center}
+\small
+\begin{tabular}{@{}l r@{}}
+\toprule
+\textbf{File} & \textbf{Size (bytes)} \\
+\midrule
+\texttt{cache/train\_local\_codes.pt} & 70,227,198 \\
+\texttt{cache/val\_local\_codes.pt} & 34,206,634 \\
+\texttt{cache/train\_windows.json} & 238,664 \\
+\texttt{cache/val\_windows.json} & 1,487,109 \\
+\texttt{calvin\_static/train\_manifest.json} & 49,337 \\
+\texttt{calvin\_static/val\_manifest.json} & 304,640 \\
+\texttt{bc\_vis\_calvin\_4090/best.pt} & 711,093,016 \\
+\texttt{bc\_vis\_proprio\_calvin\_4090/best.pt} & 711,291,568 \\
+\texttt{pair\_idm\_calvin\_4090/best.pt} & 711,291,568 \\
+\texttt{history\_gt\_calvin\_4090/best.pt} & 711,358,482 \\
+\texttt{vw2\_hidden\_mlp\_action\_head/best.pt} & 324,263,030 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section*{3. Verified Results Preserved by the Rescue}
+The rescue also preserved the offline evaluation outputs from the completed 4090 run. These are \textbf{real recovered results}, not newly rerun numbers. They remain the best verified quantitative evidence currently available.
+
+\begin{center}
+\small
+\rowcolors{2}{white}{ReportSoft}
+\begin{tabular}{@{}l r r r@{}}
+\toprule
+\rowcolor{ReportBlue!12}
+\textbf{Controller} & \textbf{Action NLL} & \textbf{Action MSE} & \textbf{Jerk} \\
+\midrule
+\texttt{VW2\_hidden\_mlp\_action\_head} & -0.05002 & 0.08925 & 0.00671523 \\
+\texttt{History\_IDM\_GTcode} & 0.99295 & 0.15558 & 0.00000764 \\
+\texttt{BC\_vis} & 1.23764 & 0.18699 & 0.00000009 \\
+\texttt{BC\_vis\_proprio} & 0.72483 & 0.21353 & 0.00000368 \\
+\texttt{Pair\_IDM\_GTcode} & 1.01428 & 0.23940 & 0.00000024 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\ResultBox{
+\textbf{Interpretation of the preserved results.}
+\texttt{History\_IDM\_GTcode} beats both BC baselines on offline action MSE, but it does \textbf{not} beat \texttt{VW2\_hidden\_mlp\_action\_head}. Therefore the previously completed offline gate remained a \textbf{No-Go} for continuing the old Phase-1 line, and it does \textbf{not} satisfy the new instruction's stronger requirement for a real closed-loop win.
+}
+
+\section*{4. Current Status Against the New Task Block}
+\begin{center}
+\small
+\begin{tabular}{@{}l l l@{}}
+\toprule
+\textbf{Task} & \textbf{Status} & \textbf{Concrete state} \\
+\midrule
+Task 0: rescue artifacts & \textcolor{ReportGood}{Complete} & \shortstack[l]{Rescue succeeded. Key artifacts are present locally,\\ and the remote billing source was shut down afterward.} \\
+Task 1: real CALVIN closed-loop evaluator & \textcolor{ReportWarn}{Not complete} & \shortstack[l]{The current repo evaluator still throws unless\\ \texttt{dataset\_type=mock}. No valid real closed-loop\\ CALVIN run has been produced yet.} \\
+Task 2: missing metrics & \textcolor{ReportWarn}{Not complete} & \shortstack[l]{The requested metrics set for final adjudication\\ has not been implemented and logged yet.} \\
+Task 3: 50 fixed validation episodes & \textcolor{ReportWarn}{Not run} & \shortstack[l]{No deterministic 50-episode real CALVIN\\ adjudication result exists yet.} \\
+Task 4: final one-page verdict & \textcolor{ReportWarn}{Not available} & \shortstack[l]{A real closed-loop stop/go table would be premature\\ because Tasks 1--3 are still incomplete.} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section*{5. Concrete Technical Findings From the Audit}
+\textbf{5.1 The current closed-loop evaluator is mock-only.}
+
+The repository file \texttt{videoworld2/robot\_idm/eval/eval\_closed\_loop.py} currently contains:
+\begin{itemize}
+  \item a mock-frame renderer and oracle dynamics for a synthetic task;
+  \item a hard failure path if \texttt{cfg["data"]["dataset\_type"] != "mock"}.
+\end{itemize}
+
+That means the existing evaluator cannot be used as the ``real CALVIN closed-loop evaluator'' requested in the latest instruction.
+
+\textbf{5.2 The rescued CALVIN manifests still depend on remote dataset roots.}
+
+The recovered validation manifest starts with a remote Linux dataset root of the form:
+\begin{itemize}
+  \item \texttt{/remote/linux/path/calvin\_subset\_val/...}
+\end{itemize}
+
+This confirms that local rescue recovered the manifests and indexes, but \textbf{did not relocate the underlying CALVIN frame files to a local runnable path}. A real closed-loop or even full local dataset replay still needs either:
+\begin{itemize}
+  \item the actual dataset files on the local machine plus path remapping, or
+  \item execution on a machine where those paths exist.
+\end{itemize}
+
+\textbf{5.3 ``Normalizer'' is currently a pipeline property, not a standalone artifact.}
+
+The audit checked the rescued outputs and the current dataset code path. The CALVIN dataset loader reads \texttt{rel\_actions} or \texttt{actions} directly from the episode \texttt{.npz} files. The run output does not contain a separate saved normalizer file. For the new evaluator, the action normalization and clipping policy must therefore be made explicit in code and config rather than assumed to exist as a downloadable checkpoint-side artifact.
+
+\section*{6. What Still Needs To Be Built}
+To satisfy the latest instruction block fully, the next implementation stage still needs:
+\begin{itemize}
+  \item \texttt{scripts/eval\_calvin\_closed\_loop\_real.py};
+  \item \texttt{configs/eval/calvin\_closed\_loop\_gate.yaml};
+  \item a fixed 50-episode adjudication list with identical start states and instructions across all controllers;
+  \item deterministic rollout with mean action only;
+  \item unified action normalization, clipping, task timeout, and camera pipeline;
+  \item the missing metrics:
+    success rate, mean steps-to-success, first-action MSE, gripper accuracy, delta-to-go or one-step progress, jerk, clipping ratio, action norm, and delta-action norm;
+  \item a concrete definition of \texttt{VW2\_hidden\_mlp\_action\_head\_smooth}, because no separate smooth checkpoint has been recovered yet.
+\end{itemize}
+
+\section*{7. Bottom Line}
+The work completed in this round is real and useful: the remote artifacts were successfully salvaged, the remote cost exposure was cut off immediately after rescue, and the previous 4090 results are now preserved locally with their configs and evaluation outputs. That prevents the project from dying due to artifact loss.
+
+The work is \textbf{not yet the final CALVIN closed-loop adjudication requested in the latest instruction}. The current state is:
+\begin{itemize}
+  \item \textbf{artifact rescue: done;}
+  \item \textbf{real closed-loop evaluator and final 50-episode verdict: not done yet.}
+\end{itemize}
+
+\vfill
+\noindent\textcolor{ReportAccent}{Report artifact generated by Codex on 2026-04-11.}
+
+\end{document}

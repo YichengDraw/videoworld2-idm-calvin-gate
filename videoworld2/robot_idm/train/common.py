@@ -1,0 +1,189 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import torch
+from torch.utils.data import DataLoader
+
+from videoworld2.robot_idm.data.collate import robot_idm_collate
+from videoworld2.robot_idm.utils.checkpoint import find_resume_path, load_checkpoint
+from videoworld2.robot_idm.utils.config import dump_config
+from videoworld2.robot_idm.utils.factory import build_train_val_datasets
+from videoworld2.robot_idm.utils.latent_cache import extract_code_cache
+from videoworld2.robot_idm.utils.mock_data import generate_mock_dataset
+from videoworld2.robot_idm.utils.runtime import ensure_dir
+
+
+def resolve_config_path(cfg: dict[str, Any], path_value: str) -> Path:
+    path = Path(path_value)
+    if path.is_absolute():
+        return path
+    return (Path(cfg["_meta"]["config_path"]).parent / path).resolve()
+
+
+def prepare_mock_data_if_needed(cfg: dict[str, Any]) -> None:
+    data_cfg = cfg["data"]
+    if data_cfg.get("dataset_type") != "mock":
+        return
+
+    train_manifest = resolve_config_path(cfg, data_cfg["train_manifest"])
+    val_manifest = resolve_config_path(cfg, data_cfg["val_manifest"])
+    if train_manifest.exists() and val_manifest.exists():
+        return
+
+    root_dir = resolve_config_path(cfg, data_cfg.get("mock_root", "datasets/mock_robot"))
+    generate_mock_dataset(
+        root=root_dir,
+        train_episodes=int(data_cfg.get("mock_train_episodes", 64)),
+        val_episodes=int(data_cfg.get("mock_val_episodes", 16)),
+    )
+
+
+def ensure_code_caches(cfg: dict[str, Any], adapter, device: torch.device) -> None:
+    prepare_mock_data_if_needed(cfg)
+    data_cfg = cfg["data"]
+    train_cache = resolve_config_path(cfg, data_cfg["train_cache"])
+    val_cache = resolve_config_path(cfg, data_cfg["val_cache"])
+    if train_cache.exists() and val_cache.exists():
+        return
+
+    train_dataset, val_dataset = build_train_val_datasets(cfg, use_latent_cache=False)
+    extract_code_cache(
+        train_dataset,
+        adapter,
+        train_cache,
+        batch_size=int(cfg["training"].get("cache_batch_size", 8)),
+        num_workers=int(cfg["training"].get("num_workers", 0)),
+        device=device,
+        overwrite=bool(data_cfg.get("overwrite_cache", False)),
+    )
+    extract_code_cache(
+        val_dataset,
+        adapter,
+        val_cache,
+        batch_size=int(cfg["training"].get("cache_batch_size", 8)),
+        num_workers=int(cfg["training"].get("num_workers", 0)),
+        device=device,
+        overwrite=bool(data_cfg.get("overwrite_cache", False)),
+    )
+
+
+def make_dataloaders(cfg: dict[str, Any], use_latent_cache: bool) -> tuple[DataLoader, DataLoader]:
+    prepare_mock_data_if_needed(cfg)
+    train_dataset, val_dataset = build_train_val_datasets(cfg, use_latent_cache=use_latent_cache)
+    batch_size = int(cfg["training"].get("batch_size", 32))
+    num_workers = int(cfg["training"].get("num_workers", 0))
+    use_pin_memory = bool(cfg["training"].get("pin_memory", torch.cuda.is_available()))
+    use_persistent_workers = num_workers > 0 and bool(cfg["training"].get("persistent_workers", True))
+    prefetch_factor = int(cfg["training"].get("prefetch_factor", 2))
+    worker_kwargs: dict[str, Any] = {}
+    if num_workers > 0:
+        worker_kwargs["persistent_workers"] = use_persistent_workers
+        worker_kwargs["prefetch_factor"] = prefetch_factor
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        collate_fn=robot_idm_collate,
+        drop_last=False,
+        pin_memory=use_pin_memory,
+        **worker_kwargs,
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        collate_fn=robot_idm_collate,
+        drop_last=False,
+        pin_memory=use_pin_memory,
+        **worker_kwargs,
+    )
+    return train_loader, val_loader
+
+
+def make_output_dir(cfg: dict[str, Any]) -> Path:
+    output_dir = resolve_config_path(cfg, cfg["training"]["output_dir"])
+    ensure_dir(output_dir)
+    dump_config(cfg, output_dir / "resolved_config.yaml")
+    return output_dir
+
+
+def maybe_resume_training(
+    output_dir: str | Path,
+    modules: dict[str, torch.nn.Module],
+    optimizer: torch.optim.Optimizer | None = None,
+    explicit_resume: str | None = None,
+) -> tuple[int, int, float]:
+    resume_path = find_resume_path(output_dir, explicit=explicit_resume)
+    if resume_path is None:
+        return 0, 0, float("-inf")
+
+    state = load_checkpoint(resume_path)
+    for name, module in modules.items():
+        if name in state:
+            module.load_state_dict(state[name], strict=False)
+    if optimizer is not None and "optimizer" in state:
+        optimizer.load_state_dict(state["optimizer"])
+    return int(state.get("epoch", 0)), int(state.get("global_step", 0)), float(state.get("best_metric", float("-inf")))
+
+
+def batch_to_state_encoder_inputs(batch: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "rgb_hist": batch["rgb_hist"],
+        "proprio_hist": batch.get("proprio_hist"),
+        "lang_texts": batch.get("lang"),
+        "embodiment_id": batch["embodiment_id"].long(),
+    }
+
+
+def sample_code_conditioning(
+    cfg: dict[str, Any],
+    batch: dict[str, Any],
+    state_tokens: torch.Tensor,
+    adapter,
+    planner,
+    training: bool,
+) -> tuple[torch.Tensor | None, dict[str, torch.Tensor]]:
+    idm_cfg = cfg.get("idm", {})
+    if not idm_cfg.get("use_future_codes", True):
+        return None, {}
+
+    gt_codes = batch["future_codes"]
+    gt_embeds = batch["future_code_embeds"]
+    source = idm_cfg.get("code_source", "gt")
+    planner_metrics: dict[str, torch.Tensor] = {}
+    pred_codes = None
+    pred_embeds = None
+    if planner is not None:
+        pred_codes = planner.sample(state_tokens)
+        pred_embeds = adapter.code_embed(pred_codes)
+        planner_metrics["planner_code_accuracy"] = (pred_codes == gt_codes).float().mean()
+
+    if not training or not idm_cfg.get("mixed_code_training", False):
+        if source == "predicted" and pred_embeds is not None:
+            return pred_embeds, planner_metrics
+        return gt_embeds, planner_metrics
+
+    probs = torch.rand(gt_embeds.size(0), device=gt_embeds.device)
+    ratio_gt = float(idm_cfg.get("mixed_code_ratio_gt", 0.6))
+    ratio_pred = float(idm_cfg.get("mixed_code_ratio_pred", 0.2))
+    conditioned = gt_embeds.clone()
+
+    noisy_mask = probs >= ratio_gt + ratio_pred
+    if noisy_mask.any():
+        noisy = gt_embeds[noisy_mask] + 0.05 * torch.randn_like(gt_embeds[noisy_mask])
+        dropout_mask = torch.rand_like(noisy[..., :1]) < 0.1
+        noisy = noisy.masked_fill(dropout_mask, 0.0)
+        conditioned[noisy_mask] = noisy
+
+    pred_mask = (probs >= ratio_gt) & (probs < ratio_gt + ratio_pred)
+    if pred_mask.any() and pred_embeds is not None:
+        conditioned[pred_mask] = pred_embeds[pred_mask]
+
+    if planner is None and source == "predicted":
+        raise ValueError("Predicted-code conditioning requires a planner checkpoint.")
+
+    return conditioned, planner_metrics

@@ -1,0 +1,17 @@
+data:
+  dataset_type: standard
+  train_manifest: ../../datasets/libero_object/train_manifest.json
+  val_manifest: ../../datasets/libero_object/val_manifest.json
+  train_index: ../../cache/libero_object/train_windows.json
+  val_index: ../../cache/libero_object/val_windows.json
+  train_cache: ../../cache/libero_object/train_local_codes.pt
+  val_cache: ../../cache/libero_object/val_local_codes.pt
+  history_frames: 4
+  past_action_hist: 4
+  future_video_horizon: 8
+  action_chunk: 8
+  stride: 4
+  image_size: 128
+  proprio_dim: 15
+  use_proprio: true
+  use_lang: true

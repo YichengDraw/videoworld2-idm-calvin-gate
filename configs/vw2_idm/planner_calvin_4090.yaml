@@ -1,0 +1,14 @@
+extends:
+  - planner_small.yaml
+  - data_calvin_gate_4090.yaml
+  - adapter_vw2_official.yaml
+
+experiment_name: planner_calvin_4090
+
+training:
+  output_dir: ../../outputs/vw2_idm/planner_calvin_4090
+  max_epochs: 4
+
+logging:
+  wandb:
+    enabled: false

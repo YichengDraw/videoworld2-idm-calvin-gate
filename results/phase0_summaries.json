@@ -1,0 +1,39 @@
+{
+  "oracle_replay": {
+    "split": "val",
+    "episodes": 12,
+    "rollout_success": 1.0,
+    "mean_final_distance": 0.005462291427344705,
+    "mean_num_actions": 40.0
+  },
+  "bc_overfit_e12": {
+    "offline": {
+      "action_nll": -0.910147507985433,
+      "action_mse": 0.004106773451591532,
+      "jerk": 1.12397165139555e-05
+    },
+    "closed_loop": {
+      "rollout_success": 0.08333333333333333,
+      "jerk": 1.541113249745966e-10
+    },
+    "debug": {
+      "first_action_mse": 0.007525382911201935,
+      "clip_fraction": 0.0
+    }
+  },
+  "history_gt_overfit_e12": {
+    "offline": {
+      "action_nll": 0.5589679876963297,
+      "action_mse": 0.00274276469523708,
+      "jerk": 0.00025470337520043057
+    },
+    "closed_loop": {
+      "rollout_success": 0.4166666666666667,
+      "jerk": 8.371023917367697e-05
+    },
+    "debug": {
+      "first_action_mse": 0.007046516251345262,
+      "clip_fraction": 0.0
+    }
+  }
+}

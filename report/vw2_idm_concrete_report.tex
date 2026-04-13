@@ -1,0 +1,167 @@
+\documentclass[11pt]{article}
+
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,tabularx,array}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{hyperref}
+\usepackage{enumitem}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=MidnightBlue,
+    urlcolor=MidnightBlue
+}
+
+\renewcommand{\arraystretch}{1.18}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.55em}
+\sloppy
+
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\improve}[1]{\textcolor{BrickRed}{#1}}
+
+\begin{document}
+
+{\LARGE \textbf{VideoWorld2 Robot IDM Prototype Report}}\\[0.25em]
+{\small Workspace: \path{C:/Users/yiche/PycharmProjects/lab_code_26spring/research_code/VideoWorld/VideoWorld2}}\\[0.15em]
+{\large Date: 2026-04-11}
+
+\vspace{0.8em}
+
+\textbf{Objective.}
+Build a VideoWorld2-based robot inverse-dynamics prototype with local latent-code extraction, a one-step latent planner, history-aware action decoding, resumable training, YAML configs, tests, and a first end-to-end benchmark run.
+
+\textbf{Scope actually executed.}
+I implemented the new package under \code{videoworld2/robot\_idm/}, added configs and shell wrappers, generated a synthetic static-camera smoke benchmark because CALVIN and LIBERO data were not present locally, trained the planner and four IDM variants, and produced a compiled PDF report.
+
+\section*{1. Delivered Implementation}
+
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{0.25\linewidth} >{\raggedright\arraybackslash}X}
+\toprule
+\textbf{Area} & \textbf{Delivered} \\
+\midrule
+Data and caching & Windowed robot dataset, latent-cache dataset, collate path, JSON window index builder, disk-backed latent cache, mock benchmark generator. \\
+Model stack & Local dLDM adapter, state encoder, one-step discrete latent planner, Gaussian history-aware IDM, verifier, direct-policy distillation module. \\
+Training and eval & Resumable training entry points for code extraction, planner, IDM, verifier, distillation, plus offline and closed-loop evaluators. \\
+Configs and scripts & YAML configs for smoke, CALVIN, LIBERO, planner, IDM, verifier, distillation, and ablation; shell wrappers in \code{scripts/}. \\
+Validation & Five unit tests passed: local window extraction, latent cache indexing, planner output shape, IDM output shape, verifier reranking path. \\
+\bottomrule
+\end{tabularx}
+
+\section*{2. Smoke Benchmark Protocol}
+
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{0.48\linewidth} >{\raggedleft\arraybackslash}X}
+\toprule
+\textbf{Item} & \textbf{Value} \\
+\midrule
+Runtime & Local workspace virtualenv, CUDA enabled, RTX 4070 8GB \\
+Benchmark & Synthetic mock static-camera control task \\
+Train episodes / val episodes & 80 / 24 \\
+Indexed train windows / val windows & 640 / 192 \\
+Windows used in smoke training & 320 train / 96 val \\
+History frames $H_{\mathrm{ctx}}$ & 4 \\
+Past action history $H_{\mathrm{hist}}$ & 4 \\
+Future video horizon $H_v$ & 8 \\
+Action chunk $H_a$ & 8 \\
+Stride & 4 \\
+Image size & $64 \times 64$ \\
+Batch size & 32 \\
+Epochs per run & 4 \\
+Planner learning rate & $1 \times 10^{-3}$ \\
+IDM learning rate & $1 \times 10^{-3}$ \\
+Closed-loop execution & execute 1 action, then replan \\
+Tokenizer backend used in smoke run & \code{mock\_geometry} \\
+\bottomrule
+\end{tabularx}
+
+\textbf{Important limitation.}
+This smoke run validates the training and evaluation stack.
+It does not yet validate the final target setting because it does not use a real VideoWorld2 robot latent tokenizer or a real CALVIN/LIBERO dataset.
+
+\section*{3. Quantitative Results}
+
+\subsection*{3.1 Planner}
+
+\begin{tabularx}{\linewidth}{>{\centering\arraybackslash}p{0.12\linewidth} *{4}{>{\centering\arraybackslash}X}}
+\toprule
+\textbf{Epoch} & \textbf{Train loss} & \textbf{Train acc.} & \textbf{Val loss} & \textbf{Val acc.} \\
+\midrule
+1 & 2.2991 & 0.3703 & 1.3292 & 0.6563 \\
+2 & 0.8885 & 0.7773 & 0.5127 & 0.8464 \\
+3 & 0.3577 & 0.8914 & 0.2606 & 0.8802 \\
+4 & 0.2462 & 0.8844 & 0.2000 & 0.9036 \\
+\bottomrule
+\end{tabularx}
+
+\textbf{Planner result.}
+The planner converged cleanly and reached \textbf{90.36\% validation code accuracy}, which is strong enough to support predicted-code conditioning experiments.
+
+\subsection*{3.2 IDM Ablations}
+
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{0.28\linewidth} >{\centering\arraybackslash}X >{\centering\arraybackslash}X >{\centering\arraybackslash}X >{\centering\arraybackslash}X >{\centering\arraybackslash}X}
+\toprule
+\textbf{Variant} & \textbf{Offline NLL} & \textbf{Offline MSE} & \textbf{MSE vs.\ BC} & \textbf{Rollout success} & \textbf{Planner acc.} \\
+\midrule
+BC & 0.8833 & 0.0170 & baseline & 0.0000 & 0.0000 \\
+Pair-IDM & 0.9440 & 0.0078 & \textbf{-53.9\%} & 0.0000 & 0.0000 \\
+History-IDM (GT code) & 0.9268 & 0.0116 & \textbf{-31.4\%} & 0.0000 & 0.0000 \\
+History-IDM (predicted code) & 0.9413 & 0.0060 & \textbf{-64.9\%} & 0.0000 & 0.4688 \\
+\bottomrule
+\end{tabularx}
+
+\textbf{Additional smoothness numbers.}
+
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{0.33\linewidth} >{\centering\arraybackslash}X >{\centering\arraybackslash}X}
+\toprule
+\textbf{Variant} & \textbf{Offline jerk} & \textbf{Closed-loop jerk} \\
+\midrule
+BC & 0.0000658 & 0.0000000030 \\
+Pair-IDM & 0.0009315 & 0.0003030 \\
+History-IDM (GT code) & 0.0028817 & 0.0002665 \\
+History-IDM (predicted code) & 0.0074209 & 0.0000000274 \\
+\bottomrule
+\end{tabularx}
+
+\textbf{Readout.}
+\begin{itemize}[leftmargin=1.4em]
+    \item Future-code conditioning helped \emph{offline action regression}. All latent-conditioned variants beat BC on MSE.
+    \item The best offline MSE was \textbf{0.0060} from History-IDM with predicted codes.
+    \item BC still had the best offline NLL at \textbf{0.8833}. This means the latent-conditioned variants improved point prediction more than uncertainty calibration.
+    \item Closed-loop rollout success remained \textbf{0/12} for every variant under the current smoke protocol.
+    \item The predicted-code variant preserved planner signal in closed loop with \textbf{46.88\%} planner code accuracy, but that signal did not yet translate into successful task completion.
+\end{itemize}
+
+\section*{4. What Worked and What Did Not}
+
+\textbf{What worked.}
+\begin{itemize}[leftmargin=1.4em]
+    \item The requested software structure is in place and runnable.
+    \item Local code extraction, caching, planner training, IDM training, and evaluation all ran end-to-end.
+    \item Planner learning was strong on the smoke task.
+    \item Latent-conditioned IDM variants clearly improved offline MSE over BC.
+\end{itemize}
+
+\textbf{What did not work yet.}
+\begin{itemize}[leftmargin=1.4em]
+    \item No variant achieved nonzero rollout success in the closed-loop smoke benchmark.
+    \item The best-MSE variant still had worse NLL than BC, which points to poor Gaussian calibration.
+    \item The current smoke adapter is not a faithful replacement for a real VideoWorld2 robot latent tokenizer.
+\end{itemize}
+
+\section*{5. Immediate Next Steps}
+
+\begin{enumerate}[leftmargin=1.4em]
+    \item \improve{Switch from the mock geometry tokenizer to a real VideoWorld2 local latent tokenizer checkpoint.}
+    \item \improve{Run the same pipeline on CALVIN static camera or LIBERO-Object once manifests are prepared.}
+    \item \improve{Tune the Gaussian head and NLL/MSE weighting to improve uncertainty calibration.}
+    \item \improve{Train and use the verifier, then repeat the predicted-code closed-loop ablation.}
+    \item \improve{Stabilize closed-loop control with shorter horizons, stronger mixed-code training, and tighter replan schedules on the real benchmark.}
+\end{enumerate}
+
+\section*{6. Bottom Line}
+
+This iteration completed the requested prototype and proved that the full training and evaluation stack works locally.
+The best positive result is a \textbf{64.9\% offline MSE reduction} over BC from History-IDM with predicted codes.
+The main blocker is unchanged: \textbf{closed-loop success is still zero}, so the next iteration should focus on real latents, real robot data, and control stabilization rather than adding more surface area.
+
+\end{document}

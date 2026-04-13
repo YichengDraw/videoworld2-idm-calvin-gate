@@ -1,0 +1,21 @@
+extends:
+  - idm_small.yaml
+  - data_calvin_gate_4090.yaml
+  - adapter_vw2_official.yaml
+
+experiment_name: vw2_hidden_mlp_action_head_calvin_4090
+
+policy:
+  variant: mlp
+  hidden_dim: 512
+
+idm:
+  planner_checkpoint: ""
+
+training:
+  output_dir: ../../outputs/vw2_idm/vw2_hidden_mlp_action_head_calvin_4090
+  max_epochs: 4
+
+logging:
+  wandb:
+    enabled: false

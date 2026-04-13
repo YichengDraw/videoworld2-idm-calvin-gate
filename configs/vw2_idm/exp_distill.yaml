@@ -1,0 +1,13 @@
+extends:
+  - data_mock_smoke.yaml
+  - idm_small.yaml
+
+experiment_name: direct_policy_distill
+
+distill:
+  lambda_bc: 1.0
+  lambda_kl: 0.5
+  teacher_checkpoint: ../../outputs/vw2_idm/history_gt/checkpoints/best.pt
+
+training:
+  output_dir: ../../outputs/vw2_idm/direct_policy_distill

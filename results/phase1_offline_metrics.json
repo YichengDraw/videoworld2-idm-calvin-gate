@@ -1,0 +1,32 @@
+{
+  "vw2_hidden_mlp_action_head": {
+    "action_nll": -0.050021647359244525,
+    "action_mse": 0.08924666559323668,
+    "jerk": 0.0067152310512028635,
+    "planner_code_accuracy": 0.0
+  },
+  "history_idm_gtcode": {
+    "action_nll": 0.9929492361843586,
+    "action_mse": 0.15557768195867538,
+    "jerk": 7.638773723783743e-06,
+    "planner_code_accuracy": 0.0
+  },
+  "bc_vis": {
+    "action_nll": 1.2376385247334838,
+    "action_mse": 0.18698771484196186,
+    "jerk": 8.826447156495831e-08,
+    "planner_code_accuracy": 0.0
+  },
+  "bc_vis_proprio": {
+    "action_nll": 0.7248346395790577,
+    "action_mse": 0.21352683962322772,
+    "jerk": 3.681667042343406e-06,
+    "planner_code_accuracy": 0.0
+  },
+  "pair_idm_gtcode": {
+    "action_nll": 1.014280850533396,
+    "action_mse": 0.2393955439038109,
+    "jerk": 2.3821688355241122e-07,
+    "planner_code_accuracy": 0.0
+  }
+}

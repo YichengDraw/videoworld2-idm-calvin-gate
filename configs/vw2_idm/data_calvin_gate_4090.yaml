@@ -1,0 +1,33 @@
+data:
+  dataset_type: calvin_static
+  train_manifest: ../../datasets/calvin_static/train_manifest.json
+  val_manifest: ../../datasets/calvin_static/val_manifest.json
+  train_index: ../../cache/calvin_gate_4090/train_windows.json
+  val_index: ../../cache/calvin_gate_4090/val_windows.json
+  train_cache: ../../cache/calvin_gate_4090/train_local_codes.pt
+  val_cache: ../../cache/calvin_gate_4090/val_local_codes.pt
+  history_frames: 4
+  past_action_hist: 4
+  future_video_horizon: 8
+  action_chunk: 8
+  stride: 4
+  image_size: 128
+  proprio_dim: 15
+  use_proprio: true
+  use_lang: true
+  limit_train_windows: 8192
+  limit_val_windows: 1024
+
+training:
+  cache_batch_size: 4
+  batch_size: 64
+  num_workers: 8
+  pin_memory: true
+  persistent_workers: true
+  prefetch_factor: 4
+  seed: 7
+
+evaluation:
+  num_rollouts: 16
+  execute_per_replan: 2
+  rollout_horizon: 16

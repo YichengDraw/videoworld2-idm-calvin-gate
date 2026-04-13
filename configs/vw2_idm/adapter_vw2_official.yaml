@@ -1,0 +1,39 @@
+adapter:
+  backend: official
+  embed_dim: 1024
+  checkpoint_path: ../../checkpoints/VideoWorld2_dLDM_2B/tokenizer/ldm_tokenizer_training_init_weights.pt
+  vocab_size: 1000
+  n_codes: 8
+  official_kwargs:
+    attn_resolutions: [32]
+    channels: 128
+    channels_mult: [2, 4, 4]
+    dropout: 0.0
+    in_channels: 3
+    num_res_blocks: 2
+    out_channels: 3
+    resolution: 1024
+    patch_size: 4
+    patch_method: haar
+    z_channels: 16
+    z_factor: 1
+    num_groups: 1
+    legacy_mode: false
+    spatial_compression: 16
+    temporal_compression: 4
+    quantizer: FSQ
+    embedding_dim: 4
+    levels: [8, 5, 5, 5]
+    persistent_quantizer: false
+    encoder: LDM
+    decoder: LDM_V2
+    name: CausalDiscreteFactorizedVideoLatentDynamicTokenizer
+    act_embedding_num: 4
+    qformer_type: QFormerAdjacentFSingleQ
+
+model:
+  d_model: 1024
+  planner_depth: 2
+  idm_depth: 2
+  verifier_depth: 2
+  n_heads: 8

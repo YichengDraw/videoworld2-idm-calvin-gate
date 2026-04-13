@@ -1,0 +1,15 @@
+extends:
+  - data_mock_smoke.yaml
+  - idm_small.yaml
+
+experiment_name: history_gt
+
+idm:
+  variant: history
+  use_future_codes: true
+  use_past_actions: true
+  code_source: gt
+  mixed_code_training: false
+
+training:
+  output_dir: ../../outputs/vw2_idm/history_gt

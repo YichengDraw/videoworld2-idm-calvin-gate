@@ -1,0 +1,56 @@
+experiment_name: idm_small
+
+adapter:
+  backend: mock_geometry
+  embed_dim: 128
+
+model:
+  image_backbone: small_cnn
+  d_model: 128
+  temporal_depth: 2
+  planner_depth: 3
+  idm_depth: 3
+  verifier_depth: 2
+  n_heads: 4
+  dropout: 0.1
+  freeze_backbone: false
+  pretrained_backbone: false
+  num_embodiments: 8
+
+idm:
+  variant: history
+  use_future_codes: true
+  use_past_actions: true
+  code_source: gt
+  mixed_code_training: false
+  mixed_code_ratio_gt: 0.6
+  mixed_code_ratio_pred: 0.2
+  mixed_code_ratio_noisy: 0.2
+  planner_checkpoint: ../../outputs/vw2_idm/planner_mock/checkpoints/best.pt
+
+training:
+  output_dir: ../../outputs/vw2_idm/idm_small
+  batch_size: 32
+  cache_batch_size: 16
+  num_workers: 0
+  planner_lr: 0.001
+  idm_lr: 0.001
+  verifier_lr: 0.001
+  weight_decay: 0.0001
+  max_epochs: 4
+  seed: 7
+  gamma_discount: 0.97
+  mse_weight: 0.25
+
+logging:
+  wandb:
+    enabled: true
+    project: vw2-idm
+    mode: offline
+
+evaluation:
+  num_rollouts: 12
+  execute_per_replan: 1
+  rollout_horizon: 16
+  num_candidates: 4
+  use_verifier: false

@@ -1,0 +1,15 @@
+extends:
+  - data_mock_smoke.yaml
+  - idm_small.yaml
+
+experiment_name: bc_baseline
+
+idm:
+  variant: bc
+  use_future_codes: false
+  use_past_actions: false
+  code_source: gt
+  mixed_code_training: false
+
+training:
+  output_dir: ../../outputs/vw2_idm/bc

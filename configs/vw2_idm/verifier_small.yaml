@@ -1,0 +1,9 @@
+extends:
+  - data_mock_smoke.yaml
+  - idm_small.yaml
+
+experiment_name: verifier_small
+
+training:
+  output_dir: ../../outputs/vw2_idm/verifier_small
+  max_epochs: 3

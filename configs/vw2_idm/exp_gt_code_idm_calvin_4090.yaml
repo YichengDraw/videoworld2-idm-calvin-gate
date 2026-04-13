@@ -1,0 +1,22 @@
+extends:
+  - idm_small.yaml
+  - data_calvin_gate_4090.yaml
+  - adapter_vw2_official.yaml
+
+experiment_name: history_gt_calvin_4090
+
+idm:
+  variant: history
+  use_future_codes: true
+  use_past_actions: true
+  code_source: gt
+  mixed_code_training: false
+  planner_checkpoint: ""
+
+training:
+  output_dir: ../../outputs/vw2_idm/history_gt_calvin_4090
+  max_epochs: 4
+
+logging:
+  wandb:
+    enabled: false

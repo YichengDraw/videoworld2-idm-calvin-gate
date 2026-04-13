@@ -1,0 +1,16 @@
+extends:
+  - data_mock_smoke.yaml
+  - idm_small.yaml
+
+experiment_name: history_pred
+
+idm:
+  variant: history_pred
+  use_future_codes: true
+  use_past_actions: true
+  code_source: predicted
+  mixed_code_training: true
+  planner_checkpoint: ../../outputs/vw2_idm/planner_mock/checkpoints/best.pt
+
+training:
+  output_dir: ../../outputs/vw2_idm/history_pred

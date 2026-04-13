@@ -1,0 +1,20 @@
+ablation:
+  output_json: ../../report/vw2_idm_initial_ablation.json
+  report_path: ../../report/vw2_idm_initial_ablation.md
+  experiments:
+    - name: bc
+      label: BC
+      config: C:/Users/yiche/PycharmProjects/lab_code_26spring/research_code/VideoWorld/VideoWorld2/configs/vw2_idm/exp_bc.yaml
+      checkpoint: C:/Users/yiche/PycharmProjects/lab_code_26spring/research_code/VideoWorld/VideoWorld2/outputs/vw2_idm/bc/checkpoints/best.pt
+    - name: pair
+      label: Pair-IDM
+      config: C:/Users/yiche/PycharmProjects/lab_code_26spring/research_code/VideoWorld/VideoWorld2/configs/vw2_idm/exp_pair_idm.yaml
+      checkpoint: C:/Users/yiche/PycharmProjects/lab_code_26spring/research_code/VideoWorld/VideoWorld2/outputs/vw2_idm/pair_idm/checkpoints/best.pt
+    - name: history_gt
+      label: History-IDM
+      config: C:/Users/yiche/PycharmProjects/lab_code_26spring/research_code/VideoWorld/VideoWorld2/configs/vw2_idm/exp_gt_code_idm.yaml
+      checkpoint: C:/Users/yiche/PycharmProjects/lab_code_26spring/research_code/VideoWorld/VideoWorld2/outputs/vw2_idm/history_gt/checkpoints/best.pt
+    - name: history_pred
+      label: History-IDM + predicted codes
+      config: C:/Users/yiche/PycharmProjects/lab_code_26spring/research_code/VideoWorld/VideoWorld2/configs/vw2_idm/exp_pred_code_idm.yaml
+      checkpoint: C:/Users/yiche/PycharmProjects/lab_code_26spring/research_code/VideoWorld/VideoWorld2/outputs/vw2_idm/history_pred/checkpoints/best.pt

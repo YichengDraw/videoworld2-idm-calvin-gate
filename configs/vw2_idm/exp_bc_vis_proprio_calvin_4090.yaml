@@ -1,0 +1,25 @@
+extends:
+  - idm_small.yaml
+  - data_calvin_gate_4090.yaml
+  - adapter_vw2_official.yaml
+
+experiment_name: bc_vis_proprio_calvin_4090
+
+data:
+  use_proprio: true
+
+idm:
+  variant: bc
+  use_future_codes: false
+  use_past_actions: false
+  code_source: gt
+  mixed_code_training: false
+  planner_checkpoint: ""
+
+training:
+  output_dir: ../../outputs/vw2_idm/bc_vis_proprio_calvin_4090
+  max_epochs: 4
+
+logging:
+  wandb:
+    enabled: false

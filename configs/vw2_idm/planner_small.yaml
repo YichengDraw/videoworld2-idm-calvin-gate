@@ -1,0 +1,45 @@
+extends:
+  - data_mock_smoke.yaml
+
+experiment_name: planner_mock
+
+adapter:
+  backend: mock_geometry
+  embed_dim: 128
+
+model:
+  image_backbone: small_cnn
+  d_model: 128
+  temporal_depth: 2
+  planner_depth: 3
+  idm_depth: 3
+  verifier_depth: 2
+  n_heads: 4
+  dropout: 0.1
+  freeze_backbone: false
+  pretrained_backbone: false
+  num_embodiments: 8
+
+training:
+  output_dir: ../../outputs/vw2_idm/planner_mock
+  batch_size: 32
+  cache_batch_size: 16
+  num_workers: 0
+  planner_lr: 0.001
+  idm_lr: 0.001
+  verifier_lr: 0.001
+  weight_decay: 0.0001
+  max_epochs: 4
+  seed: 7
+  gamma_discount: 0.97
+
+logging:
+  wandb:
+    enabled: true
+    project: vw2-idm
+    mode: offline
+
+evaluation:
+  num_rollouts: 12
+  execute_per_replan: 1
+  rollout_horizon: 16
