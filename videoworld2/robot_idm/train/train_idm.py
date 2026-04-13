@@ -16,7 +16,7 @@ from videoworld2.robot_idm.train.common import (
 )
 from videoworld2.robot_idm.utils.checkpoint import load_checkpoint, save_checkpoint
 from videoworld2.robot_idm.utils.config import load_config
-from videoworld2.robot_idm.utils.factory import build_idm, build_planner, build_state_encoder
+from videoworld2.robot_idm.utils.factory import build_direct_policy, build_idm, build_planner, build_state_encoder
 from videoworld2.robot_idm.utils.logging_utils import ExperimentLogger
 from videoworld2.robot_idm.utils.metrics import action_mse, detach_metrics, discounted_gaussian_nll
 from videoworld2.robot_idm.utils.runtime import resolve_device, seed_all, to_device
@@ -35,6 +35,12 @@ def load_planner_bundle(cfg, adapter, device: torch.device):
     planner_encoder.eval()
     planner.eval()
     return planner_encoder, planner
+
+
+def build_trainable_policy(cfg, action_dim: int, device: torch.device):
+    if cfg.get("idm", {}).get("variant") == "bc" or cfg.get("policy", {}).get("variant") == "mlp":
+        return build_direct_policy(cfg, action_dim=action_dim).to(device), "direct_policy"
+    return build_idm(cfg, action_dim=action_dim).to(device), "idm"
 
 
 def run_epoch(
@@ -114,7 +120,7 @@ def main() -> None:
     sample_batch = next(iter(train_loader))
     action_dim = sample_batch["action_chunk"].size(-1)
     state_encoder = build_state_encoder(cfg).to(device)
-    idm = build_idm(cfg, action_dim=action_dim).to(device)
+    idm, checkpoint_key = build_trainable_policy(cfg, action_dim=action_dim, device=device)
     planner_encoder, planner = load_planner_bundle(cfg, adapter, device)
 
     optimizer = torch.optim.AdamW(
@@ -127,7 +133,7 @@ def main() -> None:
     logger = ExperimentLogger(output_dir, cfg)
     start_epoch, global_step, best_metric = maybe_resume_training(
         output_dir,
-        modules={"state_encoder": state_encoder, "idm": idm},
+        modules={"state_encoder": state_encoder, checkpoint_key: idm},
         optimizer=optimizer,
         explicit_resume=args.resume,
     )
@@ -150,7 +156,7 @@ def main() -> None:
                 "global_step": global_step + epoch + 1,
                 "best_metric": best_metric,
                 "state_encoder": state_encoder.state_dict(),
-                "idm": idm.state_dict(),
+                checkpoint_key: idm.state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "planner_checkpoint": cfg.get("idm", {}).get("planner_checkpoint"),
             },

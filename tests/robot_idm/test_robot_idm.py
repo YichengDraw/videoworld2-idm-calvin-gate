@@ -12,6 +12,7 @@ from videoworld2.robot_idm.models.forward_verifier import ForwardVerifier
 from videoworld2.robot_idm.models.inverse_dynamics import HistoryAwareIDM
 from videoworld2.robot_idm.models.latent_planner import LatentPlanner
 from videoworld2.robot_idm.train.common import sample_code_conditioning
+from videoworld2.robot_idm.train.train_idm import build_trainable_policy
 from videoworld2.robot_idm.utils.config import load_config
 from videoworld2.robot_idm.utils.latent_cache import LatentCodeCache
 from videoworld2.robot_idm.utils.runtime import save_json
@@ -140,6 +141,29 @@ class RobotIDMTests(unittest.TestCase):
             cfg = load_config(child_config)
 
             self.assertEqual(cfg["adapter"]["_config_dir"], str(shared_dir.resolve()))
+
+    def test_build_trainable_policy_respects_variant(self) -> None:
+        device = torch.device("cpu")
+        base_cfg = {
+            "data": {"action_chunk": 8},
+            "model": {"d_model": 64, "idm_depth": 2, "n_heads": 4, "num_embodiments": 8},
+            "idm": {"variant": "history", "use_future_codes": True, "use_past_actions": True},
+            "policy": {},
+        }
+
+        history_model, history_key = build_trainable_policy(base_cfg, action_dim=2, device=device)
+        self.assertIsInstance(history_model, HistoryAwareIDM)
+        self.assertEqual(history_key, "idm")
+
+        bc_cfg = {**base_cfg, "idm": {**base_cfg["idm"], "variant": "bc", "use_future_codes": False, "use_past_actions": False}}
+        bc_model, bc_key = build_trainable_policy(bc_cfg, action_dim=2, device=device)
+        self.assertNotIsInstance(bc_model, HistoryAwareIDM)
+        self.assertEqual(bc_key, "direct_policy")
+
+        mlp_cfg = {**base_cfg, "policy": {"variant": "mlp", "hidden_dim": 128}}
+        mlp_model, mlp_key = build_trainable_policy(mlp_cfg, action_dim=2, device=device)
+        self.assertNotIsInstance(mlp_model, HistoryAwareIDM)
+        self.assertEqual(mlp_key, "direct_policy")
 
 
 if __name__ == "__main__":
