@@ -121,21 +121,23 @@ python -m videoworld2.robot_idm.eval.eval_offline_idm configs/vw2_idm/exp_gt_cod
 
 | Check | Result |
 | --- | --- |
-| Oracle replay | `100%` success on 12 validation episodes |
-| BC overfit closed loop | `8.33%` success, offline MSE `0.00411` |
-| History-IDM GT-code overfit closed loop | `41.67%` success, offline MSE `0.00274` |
+| Oracle replay | `100%` success on 24 validation episodes |
+| BC overfit closed loop | `33.33%` success, offline MSE `0.00283` |
+| History-IDM GT-code overfit closed loop | `16.67%` success, offline MSE `0.00346` |
 
 Sanitized summaries are committed in [`results/phase0_summaries.json`](results/phase0_summaries.json).
 
 ### Phase 1 offline CALVIN gate
 
+These numbers replace the earlier stale table after rerunning Phase 1 with the adapter path fix and the baseline architecture-selection fix.
+
 | Controller | Action NLL | Action MSE | Jerk |
 | --- | ---: | ---: | ---: |
-| `VW2_hidden_mlp_action_head` | `-0.05002` | `0.08925` | `0.00671523` |
-| `History_IDM_GTcode` | `0.99295` | `0.15558` | `0.00000764` |
-| `BC_vis` | `1.23764` | `0.18699` | `0.00000009` |
-| `BC_vis_proprio` | `0.72483` | `0.21353` | `0.00000368` |
-| `Pair_IDM_GTcode` | `1.01428` | `0.23940` | `0.00000024` |
+| `VW2_hidden_mlp_action_head` | `0.02332` | `0.17899` | `0.00356026` |
+| `History_IDM_GTcode` | `0.90677` | `0.17816` | `0.00000010` |
+| `BC_vis` | `1.59221` | `0.18078` | `0.00000014` |
+| `BC_vis_proprio` | `1.38503` | `0.19142` | `0.00000064` |
+| `Pair_IDM_GTcode` | `1.38689` | `0.18394` | `0.00000206` |
 
 Machine-readable metrics are committed in:
 

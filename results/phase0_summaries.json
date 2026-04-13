@@ -1,39 +1,61 @@
 {
   "oracle_replay": {
     "split": "val",
-    "episodes": 12,
+    "episodes": 24,
     "rollout_success": 1.0,
-    "mean_final_distance": 0.005462291427344705,
+    "mean_final_distance": 0.005047776930344601,
     "mean_num_actions": 40.0
   },
   "bc_overfit_e12": {
     "offline": {
-      "action_nll": -0.910147507985433,
-      "action_mse": 0.004106773451591532,
-      "jerk": 1.12397165139555e-05
+      "action_nll": -1.4520837465922039,
+      "action_mse": 0.0028300813088814416,
+      "jerk": 6.722557251729692e-05,
+      "planner_code_accuracy": 0.0
     },
     "closed_loop": {
-      "rollout_success": 0.08333333333333333,
-      "jerk": 1.541113249745966e-10
+      "rollout_success": 0.3333333333333333,
+      "jerk": 1.1166898313449044e-08,
+      "planner_code_accuracy": 0.0
+    }
+  },
+  "bc_overfit_e12_repeat": {
+    "offline": {
+      "action_nll": -1.4496506849924724,
+      "action_mse": 0.0027027640026062727,
+      "jerk": 5.238197142413507e-05,
+      "planner_code_accuracy": 0.0
     },
-    "debug": {
-      "first_action_mse": 0.007525382911201935,
-      "clip_fraction": 0.0
+    "closed_loop": {
+      "rollout_success": 0.16666666666666666,
+      "jerk": 6.633111634031981e-09,
+      "planner_code_accuracy": 0.0
     }
   },
   "history_gt_overfit_e12": {
     "offline": {
-      "action_nll": 0.5589679876963297,
-      "action_mse": 0.00274276469523708,
-      "jerk": 0.00025470337520043057
+      "action_nll": 0.6666473944981893,
+      "action_mse": 0.0034573653247207403,
+      "jerk": 0.0003408409926729898,
+      "planner_code_accuracy": 0.0
     },
     "closed_loop": {
-      "rollout_success": 0.4166666666666667,
-      "jerk": 8.371023917367697e-05
+      "rollout_success": 0.16666666666666666,
+      "jerk": 9.418764624014031e-05,
+      "planner_code_accuracy": 0.0
+    }
+  },
+  "history_gt_overfit_e12_repeat": {
+    "offline": {
+      "action_nll": 0.6952779690424601,
+      "action_mse": 0.00336145656183362,
+      "jerk": 0.00032303027304199833,
+      "planner_code_accuracy": 0.0
     },
-    "debug": {
-      "first_action_mse": 0.007046516251345262,
-      "clip_fraction": 0.0
+    "closed_loop": {
+      "rollout_success": 0.16666666666666666,
+      "jerk": 0.0002275909051642581,
+      "planner_code_accuracy": 0.0
     }
   }
 }
