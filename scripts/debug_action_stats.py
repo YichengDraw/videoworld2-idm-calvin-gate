@@ -38,6 +38,8 @@ def collect_debug_stats(
     sample = dataset[0]
     cfg["data"]["action_dim"] = int(sample["action_chunk"].size(-1))
     adapter, state_encoder, idm, planner_encoder, planner, verifier = load_policy_bundle(cfg, checkpoint_path, device)
+    if cfg["idm"].get("code_source", "gt") == "predicted" and planner is None:
+        raise ValueError("Predicted-code debug stats require a planner checkpoint.")
 
     data_actions = []
     rollout_actions = []
@@ -69,6 +71,7 @@ def collect_debug_stats(
         velocity = proprio_hist[-1, 2:4].clone()
         start_distance = float((position - target).norm().clamp_min(1e-6))
         sample_progress = []
+        first_action_error = None
 
         data_actions.append(sample["action_chunk"])
 
@@ -109,7 +112,8 @@ def collect_debug_stats(
             clip_count += int((predicted.abs() > action_scale).sum().item())
             clip_total += int(predicted.numel())
             executed_chunk = predicted.clamp(-action_scale, action_scale)
-            first_action_errors.append(float(torch.mean((executed_chunk[0].cpu() - sample["action_chunk"][0]) ** 2).item()))
+            if first_action_error is None:
+                first_action_error = float(torch.mean((executed_chunk[0].cpu() - sample["action_chunk"][0]) ** 2).item())
 
             for action in executed_chunk[:execute_per_replan].cpu():
                 rollout_actions.append(action)
@@ -126,6 +130,8 @@ def collect_debug_stats(
                 sample_progress.append((start_distance - current_distance) / start_distance)
 
         successes.append(float(rollout_success(position.unsqueeze(0), target.unsqueeze(0)).item()))
+        if first_action_error is not None:
+            first_action_errors.append(first_action_error)
         progress_curves.append(sample_progress)
 
     dataset_actions = torch.cat([chunk.reshape(-1, chunk.size(-1)) for chunk in data_actions], dim=0)

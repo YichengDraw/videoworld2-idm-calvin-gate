@@ -53,6 +53,8 @@ def evaluate_closed_loop(cfg: dict[str, Any], checkpoint_path: str, device: torc
     code_source = cfg.get("idm", {}).get("code_source", "gt")
     use_verifier = bool(cfg.get("evaluation", {}).get("use_verifier", False))
     num_candidates = int(cfg.get("evaluation", {}).get("num_candidates", 4))
+    if code_source == "predicted" and planner is None:
+        raise ValueError("Predicted-code closed-loop evaluation requires a planner checkpoint.")
 
     successes = []
     jerk_scores = []
@@ -86,6 +88,7 @@ def evaluate_closed_loop(cfg: dict[str, Any], checkpoint_path: str, device: torc
             )
 
             future_embeds = None
+            target_codes = oracle_codes
             if cfg["idm"].get("use_future_codes", True):
                 if code_source == "predicted" and planner is not None:
                     planning_tokens = state_tokens
@@ -99,6 +102,7 @@ def evaluate_closed_loop(cfg: dict[str, Any], checkpoint_path: str, device: torc
                     predicted_codes = planner.sample(planning_tokens)
                     planner_acc.append(float((predicted_codes.cpu() == oracle_codes.cpu()).float().mean()))
                     future_embeds = adapter.code_embed(predicted_codes)
+                    target_codes = predicted_codes
                 else:
                     future_embeds = adapter.encode_local_clip(oracle_clip.unsqueeze(0).to(device))["embeds"]
 
@@ -114,7 +118,7 @@ def evaluate_closed_loop(cfg: dict[str, Any], checkpoint_path: str, device: torc
                 for _ in range(num_candidates):
                     candidates.append(mean + torch.randn_like(mean) * log_std.exp())
                 candidate_actions = torch.stack(candidates, dim=1)
-                reranked, _ = verifier.rerank(state_tokens, candidate_actions, sample["future_codes"].unsqueeze(0).to(device))
+                reranked, _ = verifier.rerank(state_tokens, candidate_actions, target_codes)
                 action_chunk = reranked[0]
 
             for action in action_chunk[:execute_per_replan].cpu():

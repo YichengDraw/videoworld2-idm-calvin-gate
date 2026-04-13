@@ -73,6 +73,8 @@ def evaluate_offline(cfg: dict[str, Any], checkpoint_path: str, device: torch.de
     totals = {"action_nll": 0.0, "action_mse": 0.0, "jerk": 0.0, "planner_code_accuracy": 0.0}
     count = 0
     use_predicted_codes = cfg.get("idm", {}).get("code_source", "gt") == "predicted"
+    if use_predicted_codes and planner is None:
+        raise ValueError("Predicted-code offline evaluation requires a planner checkpoint.")
 
     for batch in val_loader:
         batch = to_device(batch, device)
@@ -83,10 +85,12 @@ def evaluate_offline(cfg: dict[str, Any], checkpoint_path: str, device: torch.de
             planning_tokens, _ = planner_encoder(**state_inputs)
 
         future_embeds = batch["future_code_embeds"]
+        target_codes = batch["future_codes"]
         if use_predicted_codes and planner is not None:
             predicted_codes = planner.sample(planning_tokens)
             totals["planner_code_accuracy"] += float((predicted_codes == batch["future_codes"]).float().mean().detach().cpu()) * batch["action_chunk"].size(0)
             future_embeds = adapter.code_embed(predicted_codes)
+            target_codes = predicted_codes
 
         mean, log_std = idm(
             state_tokens=state_tokens,
@@ -100,7 +104,7 @@ def evaluate_offline(cfg: dict[str, Any], checkpoint_path: str, device: torch.de
             for _ in range(int(cfg["evaluation"].get("num_candidates", 4))):
                 samples.append(mean + torch.randn_like(mean) * log_std.exp())
             candidate_actions = torch.stack(samples, dim=1)
-            reranked, _ = verifier.rerank(state_tokens, candidate_actions, batch["future_codes"])
+            reranked, _ = verifier.rerank(state_tokens, candidate_actions, target_codes)
             mean = reranked
             log_std = torch.zeros_like(reranked)
 

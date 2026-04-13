@@ -45,7 +45,8 @@ def ensure_code_caches(cfg: dict[str, Any], adapter, device: torch.device) -> No
     data_cfg = cfg["data"]
     train_cache = resolve_config_path(cfg, data_cfg["train_cache"])
     val_cache = resolve_config_path(cfg, data_cfg["val_cache"])
-    if train_cache.exists() and val_cache.exists():
+    overwrite_cache = bool(data_cfg.get("overwrite_cache", False))
+    if not overwrite_cache and train_cache.exists() and val_cache.exists():
         return
 
     train_dataset, val_dataset = build_train_val_datasets(cfg, use_latent_cache=False)
@@ -56,7 +57,7 @@ def ensure_code_caches(cfg: dict[str, Any], adapter, device: torch.device) -> No
         batch_size=int(cfg["training"].get("cache_batch_size", 8)),
         num_workers=int(cfg["training"].get("num_workers", 0)),
         device=device,
-        overwrite=bool(data_cfg.get("overwrite_cache", False)),
+        overwrite=overwrite_cache,
     )
     extract_code_cache(
         val_dataset,
@@ -65,7 +66,7 @@ def ensure_code_caches(cfg: dict[str, Any], adapter, device: torch.device) -> No
         batch_size=int(cfg["training"].get("cache_batch_size", 8)),
         num_workers=int(cfg["training"].get("num_workers", 0)),
         device=device,
-        overwrite=bool(data_cfg.get("overwrite_cache", False)),
+        overwrite=overwrite_cache,
     )
 
 
@@ -154,16 +155,19 @@ def sample_code_conditioning(
     gt_codes = batch["future_codes"]
     gt_embeds = batch["future_code_embeds"]
     source = idm_cfg.get("code_source", "gt")
+    require_predicted_codes = source == "predicted"
     planner_metrics: dict[str, torch.Tensor] = {}
     pred_codes = None
     pred_embeds = None
+    if require_predicted_codes and planner is None:
+        raise ValueError("Predicted-code conditioning requires a planner checkpoint.")
     if planner is not None:
         pred_codes = planner.sample(state_tokens)
         pred_embeds = adapter.code_embed(pred_codes)
         planner_metrics["planner_code_accuracy"] = (pred_codes == gt_codes).float().mean()
 
     if not training or not idm_cfg.get("mixed_code_training", False):
-        if source == "predicted" and pred_embeds is not None:
+        if require_predicted_codes:
             return pred_embeds, planner_metrics
         return gt_embeds, planner_metrics
 
@@ -182,8 +186,5 @@ def sample_code_conditioning(
     pred_mask = (probs >= ratio_gt) & (probs < ratio_gt + ratio_pred)
     if pred_mask.any() and pred_embeds is not None:
         conditioned[pred_mask] = pred_embeds[pred_mask]
-
-    if planner is None and source == "predicted":
-        raise ValueError("Predicted-code conditioning requires a planner checkpoint.")
 
     return conditioned, planner_metrics

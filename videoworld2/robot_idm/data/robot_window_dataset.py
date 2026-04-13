@@ -5,13 +5,17 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-import h5py
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset
 
 from videoworld2.robot_idm.utils.runtime import load_json, save_json
+
+try:
+    import h5py
+except ImportError:  # pragma: no cover - optional unless .h5 episodes are used
+    h5py = None
 
 
 @dataclass(frozen=True)
@@ -38,6 +42,9 @@ def _resize_video(video: torch.Tensor, image_size: int | None) -> torch.Tensor:
 
 
 def _load_h5(path: Path) -> dict[str, Any]:
+    if h5py is None:
+        raise ImportError("h5py is required to load .h5/.hdf5 episode files.")
+
     def visit(group):
         payload: dict[str, Any] = {}
         for key, value in group.items():

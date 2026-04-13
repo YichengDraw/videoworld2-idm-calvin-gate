@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import torch
 
@@ -10,6 +11,7 @@ from videoworld2.robot_idm.data.robot_window_dataset import RobotWindowDataset, 
 from videoworld2.robot_idm.models.forward_verifier import ForwardVerifier
 from videoworld2.robot_idm.models.inverse_dynamics import HistoryAwareIDM
 from videoworld2.robot_idm.models.latent_planner import LatentPlanner
+from videoworld2.robot_idm.train.common import sample_code_conditioning
 from videoworld2.robot_idm.utils.latent_cache import LatentCodeCache
 from videoworld2.robot_idm.utils.runtime import save_json
 
@@ -89,6 +91,28 @@ class RobotIDMTests(unittest.TestCase):
         chosen, scores = verifier.rerank(state_tokens, candidates, target_codes)
         self.assertEqual(chosen.shape, (2, 8, 2))
         self.assertEqual(scores.shape, (2, 3))
+
+    def test_predicted_code_conditioning_requires_planner(self) -> None:
+        cfg = {
+            "idm": {
+                "use_future_codes": True,
+                "code_source": "predicted",
+                "mixed_code_training": False,
+            }
+        }
+        batch = {
+            "future_codes": torch.randint(0, 8, (2, 4)),
+            "future_code_embeds": torch.randn(2, 4, 16),
+        }
+        with self.assertRaisesRegex(ValueError, "planner checkpoint"):
+            sample_code_conditioning(
+                cfg=cfg,
+                batch=batch,
+                state_tokens=torch.randn(2, 3, 16),
+                adapter=mock.Mock(),
+                planner=None,
+                training=False,
+            )
 
 
 if __name__ == "__main__":
