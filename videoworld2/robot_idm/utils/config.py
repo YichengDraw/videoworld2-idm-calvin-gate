@@ -21,6 +21,9 @@ def load_config(path: str | Path) -> dict[str, Any]:
     config_path = Path(path).resolve()
     with config_path.open("r", encoding="utf-8") as handle:
         config = yaml.safe_load(handle) or {}
+    if isinstance(config.get("adapter"), dict):
+        config["adapter"] = deepcopy(config["adapter"])
+        config["adapter"]["_config_dir"] = str(config_path.parent)
 
     extends = config.pop("extends", [])
     if isinstance(extends, (str, Path)):

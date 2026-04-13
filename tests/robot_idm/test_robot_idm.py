@@ -12,6 +12,7 @@ from videoworld2.robot_idm.models.forward_verifier import ForwardVerifier
 from videoworld2.robot_idm.models.inverse_dynamics import HistoryAwareIDM
 from videoworld2.robot_idm.models.latent_planner import LatentPlanner
 from videoworld2.robot_idm.train.common import sample_code_conditioning
+from videoworld2.robot_idm.utils.config import load_config
 from videoworld2.robot_idm.utils.latent_cache import LatentCodeCache
 from videoworld2.robot_idm.utils.runtime import save_json
 
@@ -113,6 +114,32 @@ class RobotIDMTests(unittest.TestCase):
                 planner=None,
                 training=False,
             )
+
+    def test_load_config_preserves_adapter_source_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            shared_dir = root / "configs" / "shared"
+            run_dir = root / "runs"
+            shared_dir.mkdir(parents=True)
+            run_dir.mkdir(parents=True)
+            parent_config = shared_dir / "adapter_parent.yaml"
+            child_config = run_dir / "experiment.yaml"
+            parent_config.write_text(
+                "adapter:\n"
+                "  backend: official\n"
+                "  checkpoint_path: ../../checkpoints/tokenizer.pt\n",
+                encoding="utf-8",
+            )
+            child_config.write_text(
+                f"extends:\n  - {parent_config.as_posix()}\n"
+                "training:\n"
+                "  seed: 7\n",
+                encoding="utf-8",
+            )
+
+            cfg = load_config(child_config)
+
+            self.assertEqual(cfg["adapter"]["_config_dir"], str(shared_dir.resolve()))
 
 
 if __name__ == "__main__":

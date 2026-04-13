@@ -27,6 +27,13 @@ def _channel_centroid(channel: torch.Tensor) -> torch.Tensor:
     return torch.cat([x, y], dim=-1).squeeze(-2)
 
 
+def _resolve_path_from_config_dir(path_value: str | Path, config_dir: str | Path | None) -> Path:
+    path = Path(path_value).expanduser()
+    if path.is_absolute() or config_dir is None:
+        return path
+    return (Path(config_dir) / path).resolve()
+
+
 class SurrogateLocalTokenizer(nn.Module):
     def __init__(self, vocab_size: int, n_codes: int, embed_dim: int, hidden_dim: int = 128) -> None:
         super().__init__()
@@ -106,7 +113,8 @@ class OfficialDLDMTokenizer(nn.Module):
         self.model = CausalDiscreteVideoLatentDynamicTokenizer(**model_kwargs)
         checkpoint_path = cfg.get("checkpoint_path")
         if checkpoint_path:
-            state = torch.load(Path(checkpoint_path), map_location="cpu", weights_only=False)
+            resolved_checkpoint = _resolve_path_from_config_dir(checkpoint_path, cfg.get("_config_dir"))
+            state = torch.load(resolved_checkpoint, map_location="cpu", weights_only=False)
             state_dict = state.get("state_dict", state)
             if not isinstance(state_dict, dict):
                 raise ValueError(f"Unsupported tokenizer checkpoint payload: {type(state_dict)}")
