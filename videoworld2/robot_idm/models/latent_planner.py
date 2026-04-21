@@ -38,6 +38,9 @@ class LatentPlanner(nn.Module):
             tokens = torch.cat([bos, target_codes[:, :-1]], dim=1)
         return tokens
 
+    def _causal_mask(self, device: torch.device) -> torch.Tensor:
+        return torch.triu(torch.ones(self.n_codes, self.n_codes, dtype=torch.bool, device=device), diagonal=1)
+
     def forward(
         self,
         state_tokens: torch.Tensor,
@@ -47,7 +50,7 @@ class LatentPlanner(nn.Module):
         del prev_code_tokens
         tokens = self._prepare_tokens(state_tokens.size(0), target_codes, state_tokens.device)
         hidden = self.token_embedding(tokens) + self.position_embedding.unsqueeze(0)
-        decoded = self.decoder(hidden, state_tokens)
+        decoded = self.decoder(hidden, state_tokens, tgt_mask=self._causal_mask(state_tokens.device))
         return self.output(decoded)
 
     @torch.no_grad()

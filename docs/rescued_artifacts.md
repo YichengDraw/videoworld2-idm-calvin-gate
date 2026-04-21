@@ -4,6 +4,8 @@ The original remote 4090 run produced checkpoints, latent caches, manifests, and
 
 These artifacts are intentionally **not committed** to this repository because they are large run outputs rather than source code.
 
+The committed files in `results/` are the public, lightweight post-fix summaries. This inventory is historical artifact provenance for the non-versioned bundle, not the current source of truth for the README tables.
+
 ## Recovered groups
 
 | Group | Files |
@@ -35,3 +37,4 @@ These artifacts are intentionally **not committed** to this repository because t
 - No standalone normalizer file existed in the rescued output tree.
 - The rescued CALVIN manifests referenced remote dataset roots during the original run.
 - The rescued files preserved the completed offline metrics, but they do not by themselves complete the later real closed-loop CALVIN adjudication request.
+- The latent caches do not contain raw CALVIN RGB, proprio, or action arrays. Local offline re-evaluation still needs those raw frame files or an equivalent remapped dataset root.

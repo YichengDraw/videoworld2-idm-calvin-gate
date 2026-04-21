@@ -10,9 +10,9 @@ from videoworld2.robot_idm.data.collate import robot_idm_collate
 from videoworld2.robot_idm.utils.checkpoint import find_resume_path, load_checkpoint
 from videoworld2.robot_idm.utils.config import dump_config
 from videoworld2.robot_idm.utils.factory import build_train_val_datasets
-from videoworld2.robot_idm.utils.latent_cache import extract_code_cache
+from videoworld2.robot_idm.utils.latent_cache import LatentCodeCache, extract_code_cache
 from videoworld2.robot_idm.utils.mock_data import generate_mock_dataset
-from videoworld2.robot_idm.utils.runtime import ensure_dir
+from videoworld2.robot_idm.utils.runtime import ensure_dir, make_torch_generator, make_worker_init_fn
 
 
 def resolve_config_path(cfg: dict[str, Any], path_value: str) -> Path:
@@ -40,16 +40,75 @@ def prepare_mock_data_if_needed(cfg: dict[str, Any]) -> None:
     )
 
 
+def _adapter_cache_metadata(cfg: dict[str, Any], adapter) -> dict[str, Any]:
+    adapter_cfg = cfg.get("adapter", {})
+    metadata = {
+        "adapter_backend": getattr(adapter, "backend", adapter_cfg.get("backend", "unknown")),
+        "adapter_vocab_size": int(getattr(adapter, "vocab_size", int(adapter_cfg.get("vocab_size", 0)))),
+        "adapter_n_codes": int(getattr(adapter, "n_codes", int(adapter_cfg.get("n_codes", 0)))),
+        "adapter_embed_dim": int(getattr(adapter, "embed_dim", int(adapter_cfg.get("embed_dim", 0)))),
+    }
+    checkpoint_path = adapter_cfg.get("checkpoint_path")
+    if checkpoint_path:
+        checkpoint = Path(checkpoint_path).expanduser()
+        config_dir = Path(adapter_cfg.get("_config_dir") or Path(cfg["_meta"]["config_path"]).parent)
+        resolved = checkpoint if checkpoint.is_absolute() else (config_dir / checkpoint).resolve()
+        metadata["adapter_checkpoint"] = str(resolved)
+        if resolved.exists():
+            stat = resolved.stat()
+            metadata["adapter_checkpoint_size"] = int(stat.st_size)
+            metadata["adapter_checkpoint_mtime_ns"] = int(stat.st_mtime_ns)
+    return metadata
+
+
+def _dataset_cache_metadata(cfg: dict[str, Any], dataset, split: str, adapter) -> dict[str, Any]:
+    spec = getattr(dataset, "spec", None)
+    first_window = dataset.index[0] if getattr(dataset, "index", None) else {}
+    last_window = dataset.index[-1] if getattr(dataset, "index", None) else {}
+    metadata = {
+        "metadata_version": 2,
+        "split": split,
+        "dataset_type": cfg["data"].get("dataset_type", "standard"),
+        "image_size": cfg["data"].get("image_size"),
+        "window_spec": vars(spec) if spec is not None else {},
+        "num_windows": len(dataset),
+        "first_window": {key: first_window.get(key) for key in ("episode_id", "t")},
+        "last_window": {key: last_window.get(key) for key in ("episode_id", "t")},
+    }
+    metadata.update(_adapter_cache_metadata(cfg, adapter))
+    return metadata
+
+
+def _dataset_cache_keys(dataset) -> set[str]:
+    return {LatentCodeCache.make_key(record["episode_id"], int(record["t"])) for record in dataset.index}
+
+
 def ensure_code_caches(cfg: dict[str, Any], adapter, device: torch.device) -> None:
     prepare_mock_data_if_needed(cfg)
     data_cfg = cfg["data"]
     train_cache = resolve_config_path(cfg, data_cfg["train_cache"])
     val_cache = resolve_config_path(cfg, data_cfg["val_cache"])
     overwrite_cache = bool(data_cfg.get("overwrite_cache", False))
-    if not overwrite_cache and train_cache.exists() and val_cache.exists():
-        return
+    allow_legacy_metadata = bool(data_cfg.get("allow_legacy_cache_metadata", False))
 
     train_dataset, val_dataset = build_train_val_datasets(cfg, use_latent_cache=False)
+    train_metadata = _dataset_cache_metadata(cfg, train_dataset, "train", adapter)
+    val_metadata = _dataset_cache_metadata(cfg, val_dataset, "val", adapter)
+    if not overwrite_cache and train_cache.exists() and val_cache.exists():
+        LatentCodeCache(
+            train_cache,
+            expected_metadata=train_metadata,
+            expected_keys=_dataset_cache_keys(train_dataset),
+            allow_legacy_metadata=allow_legacy_metadata,
+        )
+        LatentCodeCache(
+            val_cache,
+            expected_metadata=val_metadata,
+            expected_keys=_dataset_cache_keys(val_dataset),
+            allow_legacy_metadata=allow_legacy_metadata,
+        )
+        return
+
     extract_code_cache(
         train_dataset,
         adapter,
@@ -58,6 +117,8 @@ def ensure_code_caches(cfg: dict[str, Any], adapter, device: torch.device) -> No
         num_workers=int(cfg["training"].get("num_workers", 0)),
         device=device,
         overwrite=overwrite_cache,
+        metadata=train_metadata,
+        seed=int(cfg["training"].get("seed", 7)),
     )
     extract_code_cache(
         val_dataset,
@@ -67,6 +128,8 @@ def ensure_code_caches(cfg: dict[str, Any], adapter, device: torch.device) -> No
         num_workers=int(cfg["training"].get("num_workers", 0)),
         device=device,
         overwrite=overwrite_cache,
+        metadata=val_metadata,
+        seed=int(cfg["training"].get("seed", 7)) + 1,
     )
 
 
@@ -82,6 +145,7 @@ def make_dataloaders(cfg: dict[str, Any], use_latent_cache: bool) -> tuple[DataL
     if num_workers > 0:
         worker_kwargs["persistent_workers"] = use_persistent_workers
         worker_kwargs["prefetch_factor"] = prefetch_factor
+    seed = int(cfg["training"].get("seed", 7))
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
@@ -90,6 +154,8 @@ def make_dataloaders(cfg: dict[str, Any], use_latent_cache: bool) -> tuple[DataL
         collate_fn=robot_idm_collate,
         drop_last=False,
         pin_memory=use_pin_memory,
+        generator=make_torch_generator(seed),
+        worker_init_fn=make_worker_init_fn(seed),
         **worker_kwargs,
     )
     val_loader = DataLoader(
@@ -100,6 +166,8 @@ def make_dataloaders(cfg: dict[str, Any], use_latent_cache: bool) -> tuple[DataL
         collate_fn=robot_idm_collate,
         drop_last=False,
         pin_memory=use_pin_memory,
+        generator=make_torch_generator(seed + 1),
+        worker_init_fn=make_worker_init_fn(seed + 1),
         **worker_kwargs,
     )
     return train_loader, val_loader

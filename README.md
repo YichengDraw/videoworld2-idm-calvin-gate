@@ -8,18 +8,20 @@ This repository packages the experiment code, configs, scripts, public reports, 
 
 - Keeps the `videoworld2/robot_idm` training and evaluation stack together with the `configs/vw2_idm` configs and the `scripts/` entrypoints used in the experiment cycle.
 - Preserves the Phase 0 smoke-gate evidence and the Phase 1 offline CALVIN metrics in machine-readable files under [`results/`](results).
-- Includes a public-ready status report in [`docs/reports/vw2_idm_gate_report_20260411.pdf`](docs/reports/vw2_idm_gate_report_20260411.pdf).
+- Includes a public-ready status report in [`docs/reports/vw2_idm_gate_status_report.pdf`](docs/reports/vw2_idm_gate_status_report.pdf).
 - Excludes large and sensitive artifacts by design: datasets, checkpoints, latent caches, remote instance metadata, and any local secrets.
 
 ## Visual Summary
 
-![VideoWorld2 overview](assets/readme_figs/Fig1_final.png)
+![VideoWorld2-IDM model pipeline](assets/readme_figs/vw2_idm_model_pipeline.png)
 
-The base VideoWorld2 project provides the world-model backbone and tokenizer used by this experiment branch.
+The implemented `robot_idm` pipeline feeds windowed robot history through a state encoder and conditions controllers on either direct policy inputs, predicted latent codes, or privileged ground-truth future codes.
 
-![Robot-control method overview](assets/readme_figs/method_final.png)
+![Reliability cleanup flow](assets/readme_figs/vw2_idm_experiment_flow.png)
 
-The `robot_idm` experiments test whether future latent codes improve robot control on CALVIN relative to direct policy baselines.
+The current public gate is an offline CALVIN package plus mock closed-loop smoke evidence. A real fixed-episode CALVIN closed-loop evaluator is still absent.
+
+The upstream VideoWorld2 figures are kept for attribution/context in [`assets/readme_figs/Fig1_final.png`](assets/readme_figs/Fig1_final.png) and [`assets/readme_figs/method_final.png`](assets/readme_figs/method_final.png).
 
 ## Repository Layout
 
@@ -89,12 +91,14 @@ python scripts/debug_action_stats.py --help
 
 ```bash
 bash scripts/train_local_planner.sh configs/vw2_idm/planner_calvin_4090.yaml
-bash scripts/train_history_idm.sh configs/vw2_idm/exp_bc_vis_calvin_4090.yaml
-bash scripts/train_history_idm.sh configs/vw2_idm/exp_bc_vis_proprio_calvin_4090.yaml
-bash scripts/train_history_idm.sh configs/vw2_idm/exp_pair_idm_calvin_4090.yaml
-bash scripts/train_history_idm.sh configs/vw2_idm/exp_gt_code_idm_calvin_4090.yaml
-bash scripts/train_history_idm.sh configs/vw2_idm/exp_vw2_hidden_mlp_action_head_calvin_4090.yaml
+python -m videoworld2.robot_idm.train.train_idm configs/vw2_idm/exp_bc_vis_calvin_4090.yaml
+python -m videoworld2.robot_idm.train.train_idm configs/vw2_idm/exp_bc_vis_proprio_calvin_4090.yaml
+python -m videoworld2.robot_idm.train.train_idm configs/vw2_idm/exp_pair_idm_calvin_4090.yaml
+python -m videoworld2.robot_idm.train.train_idm configs/vw2_idm/exp_gt_code_idm_calvin_4090.yaml
+python -m videoworld2.robot_idm.train.train_idm configs/vw2_idm/exp_vw2_hidden_mlp_action_head_calvin_4090.yaml
 ```
+
+The `train_idm` entrypoint saves either an `idm` or `direct_policy` checkpoint according to the config. `policy.variant: mlp` and `idm.variant: bc` are direct-policy checkpoints and are validated as such during evaluation.
 
 ### Offline evaluation
 
@@ -143,21 +147,24 @@ Machine-readable metrics are committed in:
 
 - [`results/phase1_offline_metrics.json`](results/phase1_offline_metrics.json)
 - [`results/phase1_offline_metrics.csv`](results/phase1_offline_metrics.csv)
+- [`results/phase1_controller_metadata.json`](results/phase1_controller_metadata.json)
+
+`History_IDM_GTcode` and `Pair_IDM_GTcode` use ground-truth future latent codes from the target trajectory. They are privileged upper-bound checks, not deployable closed-loop policies.
 
 ### Current decision status
 
-The artifact rescue is complete. The real CALVIN closed-loop adjudication is not complete in this snapshot. The public report makes that boundary explicit:
+The artifact rescue is complete. The real CALVIN closed-loop adjudication is not complete in this snapshot. The current public report makes that boundary explicit:
 
-- [`docs/reports/vw2_idm_gate_report_20260411.pdf`](docs/reports/vw2_idm_gate_report_20260411.pdf)
-- [`docs/reports/vw2_idm_gate_report_20260411.tex`](docs/reports/vw2_idm_gate_report_20260411.tex)
+- [`docs/reports/vw2_idm_gate_status_report.pdf`](docs/reports/vw2_idm_gate_status_report.pdf)
+- [`docs/reports/vw2_idm_gate_status_report.tex`](docs/reports/vw2_idm_gate_status_report.tex)
 
 ## Validation
 
 This cleaned repository is intended to pass lightweight syntax validation without running heavy training jobs:
 
 ```bash
-python -m py_compile scripts/*.py
-python -m py_compile videoworld2/robot_idm/**/*.py
+python -m unittest tests.robot_idm.test_robot_idm -v
+python -c "from pathlib import Path; import py_compile; [py_compile.compile(str(p), doraise=True) for p in list(Path('scripts').glob('*.py')) + list(Path('videoworld2/robot_idm').rglob('*.py'))]"
 ```
 
 The exact command used during packaging is reported in the release notes from the upload session.

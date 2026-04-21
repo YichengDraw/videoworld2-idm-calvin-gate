@@ -19,7 +19,7 @@ from videoworld2.robot_idm.utils.config import load_config
 from videoworld2.robot_idm.utils.factory import build_direct_policy, build_idm, build_planner, build_state_encoder
 from videoworld2.robot_idm.utils.logging_utils import ExperimentLogger
 from videoworld2.robot_idm.utils.metrics import action_mse, detach_metrics, discounted_gaussian_nll
-from videoworld2.robot_idm.utils.runtime import resolve_device, seed_all, to_device
+from videoworld2.robot_idm.utils.runtime import configure_determinism, resolve_device, to_device
 
 
 def load_planner_bundle(cfg, adapter, device: torch.device):
@@ -41,6 +41,22 @@ def build_trainable_policy(cfg, action_dim: int, device: torch.device):
     if cfg.get("idm", {}).get("variant") == "bc" or cfg.get("policy", {}).get("variant") == "mlp":
         return build_direct_policy(cfg, action_dim=action_dim).to(device), "direct_policy"
     return build_idm(cfg, action_dim=action_dim).to(device), "idm"
+
+
+def checkpoint_model_metadata(cfg, checkpoint_key: str, action_dim: int) -> dict:
+    return {
+        "checkpoint_key": checkpoint_key,
+        "policy_variant": cfg.get("policy", {}).get("variant", ""),
+        "idm_variant": cfg.get("idm", {}).get("variant", ""),
+        "action_dim": int(action_dim),
+        "action_chunk": int(cfg["data"].get("action_chunk", 8)),
+        "model": cfg.get("model", {}),
+        "data": {
+            "use_proprio": bool(cfg["data"].get("use_proprio", True)),
+            "use_lang": bool(cfg["data"].get("use_lang", True)),
+            "proprio_dim": int(cfg["data"].get("proprio_dim", 4)),
+        },
+    }
 
 
 def run_epoch(
@@ -111,14 +127,13 @@ def main() -> None:
     args = parser.parse_args()
 
     cfg = load_config(args.config)
-    seed_all(int(cfg["training"].get("seed", 7)))
+    configure_determinism(int(cfg["training"].get("seed", 7)), deterministic=bool(cfg["training"].get("deterministic", True)))
     device = resolve_device(args.device)
     adapter = DLDMLocalAdapter(cfg["adapter"]).to(device)
     ensure_code_caches(cfg, adapter=adapter, device=device)
 
     train_loader, val_loader = make_dataloaders(cfg, use_latent_cache=True)
-    sample_batch = next(iter(train_loader))
-    action_dim = sample_batch["action_chunk"].size(-1)
+    action_dim = train_loader.dataset[0]["action_chunk"].size(-1)
     state_encoder = build_state_encoder(cfg).to(device)
     idm, checkpoint_key = build_trainable_policy(cfg, action_dim=action_dim, device=device)
     planner_encoder, planner = load_planner_bundle(cfg, adapter, device)
@@ -157,6 +172,8 @@ def main() -> None:
                 "best_metric": best_metric,
                 "state_encoder": state_encoder.state_dict(),
                 checkpoint_key: idm.state_dict(),
+                "model_kind": checkpoint_key,
+                "model_metadata": checkpoint_model_metadata(cfg, checkpoint_key, action_dim),
                 "optimizer": optimizer.state_dict(),
                 "planner_checkpoint": cfg.get("idm", {}).get("planner_checkpoint"),
             },

@@ -1,0 +1,70 @@
+\documentclass[11pt]{article}
+\usepackage[margin=0.8in]{geometry}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{xcolor}
+
+\title{VideoWorld2-IDM CALVIN Gate Status Report}
+\author{YichengDraw / reliability cleanup}
+\date{2026-04-22}
+
+\begin{document}
+\maketitle
+
+\section*{Verdict}
+
+The current repository supports an offline CALVIN gate and a mock-only closed-loop smoke path. It still does not contain a valid real CALVIN closed-loop adjudication. The real closed-loop path is blocked by two concrete facts: the repository evaluator rejects non-mock datasets, and the local rescue bundle does not contain raw CALVIN frame/action files needed by the dataset loader.
+
+\section*{Reliability Changes}
+
+\begin{itemize}
+  \item The latent planner now uses a causal decoder mask, preventing teacher-forced target tokens from leaking future labels into earlier predictions.
+  \item Latent caches and window indexes now carry validation metadata and fail on stale specs, stale adapter identity, stale split identity, duplicate cache keys, or key-set mismatch.
+  \item CALVIN train and validation manifests are checked for shared episode IDs and overlapping frame spans before dataset construction.
+  \item DataLoader workers and generators are seeded from the experiment seed, and training/evaluation entrypoints request deterministic CUDA behavior by default.
+  \item Direct-policy and MLP checkpoints are validated against the evaluation config before loading. MLP configs fail clearly when evaluated against non-direct checkpoints.
+\end{itemize}
+
+\section*{Phase 1 Offline CALVIN Metrics}
+
+\begin{center}
+\begin{tabular}{lrrrl}
+\hline
+Controller & Action NLL & Action MSE & Jerk & Interpretation \\
+\hline
+VW2\_hidden\_mlp\_action\_head & 0.02332 & 0.17899 & 0.00356026 & direct MLP policy \\
+History\_IDM\_GTcode & 0.90677 & 0.17816 & 0.00000010 & privileged GT-code upper bound \\
+BC\_vis & 1.59221 & 0.18078 & 0.00000014 & direct visual policy \\
+BC\_vis\_proprio & 1.38503 & 0.19142 & 0.00000064 & direct visual+proprio policy \\
+Pair\_IDM\_GTcode & 1.38689 & 0.18394 & 0.00000206 & privileged GT-code upper bound \\
+\hline
+\end{tabular}
+\end{center}
+
+The GT-code rows consume future latent codes from the target trajectory. They are useful diagnostic upper bounds, but they are not deployable policies. The deployable rows in this table are the direct-policy baselines and the MLP action head.
+
+\section*{Phase 0 Mock Smoke}
+
+\begin{center}
+\begin{tabular}{lr}
+\hline
+Check & Result \\
+\hline
+Oracle replay & 100\% success on 24 validation episodes \\
+BC overfit closed loop & 33.33\% success, offline MSE 0.00283 \\
+History-IDM GT-code overfit closed loop & 16.67\% success, offline MSE 0.00346 \\
+\hline
+\end{tabular}
+\end{center}
+
+These smoke runs validate plumbing on a synthetic mock environment. They do not prove real CALVIN closed-loop behavior.
+
+\section*{Artifact Boundary}
+
+The non-versioned rescue bundle contains manifests, window indexes, latent caches, checkpoint files, resolved configs, and offline-evaluation outputs. It does not contain raw CALVIN RGB/proprio/action frame files. The rescued manifests still reference the original remote Linux roots, so local replay requires remapping or restoring the raw dataset. The conditional real closed-loop goal remains open until the real CALVIN environment and raw data are available within the run budget policy.
+
+\section*{Public Files}
+
+The public result tables are committed under \texttt{results/}. The architecture diagrams are committed as source Mermaid files under \texttt{docs/architecture/} and rendered images under \texttt{assets/readme\_figs/}. Stale report copies and unused demo assets were removed from the public repository.
+
+\end{document}

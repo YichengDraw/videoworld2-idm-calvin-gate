@@ -12,6 +12,7 @@ from videoworld2.robot_idm.models.forward_verifier import ForwardVerifier
 from videoworld2.robot_idm.models.inverse_dynamics import HistoryAwareIDM
 from videoworld2.robot_idm.models.latent_planner import LatentPlanner
 from videoworld2.robot_idm.models.state_encoder import StateEncoder
+from videoworld2.robot_idm.utils.runtime import load_json
 
 
 def build_window_spec(cfg: dict[str, Any]) -> WindowSpec:
@@ -29,6 +30,39 @@ def _resolve_path(config_path: str, path_value: str) -> str:
     if candidate.is_absolute():
         return str(candidate)
     return str((Path(config_path).parent / candidate).resolve())
+
+
+def validate_manifest_pair(train_manifest: str | Path, val_manifest: str | Path) -> None:
+    train_path = Path(train_manifest).resolve()
+    val_path = Path(val_manifest).resolve()
+    if train_path == val_path:
+        raise ValueError(f"Train and validation manifests must be distinct: {train_path}")
+
+    train_entries = load_json(train_path).get("episodes", [])
+    val_entries = load_json(val_path).get("episodes", [])
+    train_ids = {entry.get("episode_id") for entry in train_entries}
+    val_ids = {entry.get("episode_id") for entry in val_entries}
+    overlap_ids = sorted(train_ids & val_ids)
+    if overlap_ids:
+        raise ValueError(f"Train/val manifests share episode ids: {overlap_ids[:5]}")
+
+    train_spans = _manifest_spans(train_entries)
+    val_spans = _manifest_spans(val_entries)
+    for root, train_ranges in train_spans.items():
+        for start, end in train_ranges:
+            for val_start, val_end in val_spans.get(root, []):
+                if start <= val_end and val_start <= end:
+                    raise ValueError(f"Train/val manifests overlap on {root}: train={start}-{end}, val={val_start}-{val_end}")
+
+
+def _manifest_spans(entries: list[dict[str, Any]]) -> dict[str, list[tuple[int, int]]]:
+    spans: dict[str, list[tuple[int, int]]] = {}
+    for entry in entries:
+        if "root" not in entry or "start" not in entry or "end" not in entry:
+            continue
+        root = str(Path(str(entry["root"])).as_posix())
+        spans.setdefault(root, []).append((int(entry["start"]), int(entry["end"])))
+    return spans
 
 
 def build_adapter(cfg: dict[str, Any]) -> DLDMLocalAdapter:
@@ -124,9 +158,12 @@ def build_train_val_datasets(
     image_size = int(data_cfg.get("image_size", 64))
     limit_train = data_cfg.get("limit_train_windows")
     limit_val = data_cfg.get("limit_val_windows")
+    rebuild_index = bool(data_cfg.get("rebuild_index", data_cfg.get("overwrite_cache", False)))
 
     train_manifest = _resolve_path(config_path, data_cfg["train_manifest"])
     val_manifest = _resolve_path(config_path, data_cfg["val_manifest"])
+    if bool(data_cfg.get("validate_split_disjoint", True)):
+        validate_manifest_pair(train_manifest, val_manifest)
     train_index = _resolve_path(config_path, data_cfg["train_index"])
     val_index = _resolve_path(config_path, data_cfg["val_index"])
     dataset_type = data_cfg.get("dataset_type", "standard")
@@ -135,17 +172,17 @@ def build_train_val_datasets(
         if use_latent_cache:
             train_cache = _resolve_path(config_path, data_cfg["train_cache"])
             val_cache = _resolve_path(config_path, data_cfg["val_cache"])
-            train_ds = CalvinLatentWindowDataset(train_manifest, train_cache, train_index, spec, image_size, limit_train)
-            val_ds = CalvinLatentWindowDataset(val_manifest, val_cache, val_index, spec, image_size, limit_val)
+            train_ds = CalvinLatentWindowDataset(train_manifest, train_cache, train_index, spec, image_size, limit_train, rebuild_index=rebuild_index)
+            val_ds = CalvinLatentWindowDataset(val_manifest, val_cache, val_index, spec, image_size, limit_val, rebuild_index=rebuild_index)
         else:
-            train_ds = CalvinWindowDataset(train_manifest, train_index, spec, image_size, limit_train)
-            val_ds = CalvinWindowDataset(val_manifest, val_index, spec, image_size, limit_val)
+            train_ds = CalvinWindowDataset(train_manifest, train_index, spec, image_size, limit_train, rebuild_index=rebuild_index)
+            val_ds = CalvinWindowDataset(val_manifest, val_index, spec, image_size, limit_val, rebuild_index=rebuild_index)
     elif use_latent_cache:
         train_cache = _resolve_path(config_path, data_cfg["train_cache"])
         val_cache = _resolve_path(config_path, data_cfg["val_cache"])
-        train_ds = RobotLatentWindowDataset(train_manifest, train_cache, train_index, spec, image_size, limit_train)
-        val_ds = RobotLatentWindowDataset(val_manifest, val_cache, val_index, spec, image_size, limit_val)
+        train_ds = RobotLatentWindowDataset(train_manifest, train_cache, train_index, spec, image_size, limit_train, rebuild_index=rebuild_index)
+        val_ds = RobotLatentWindowDataset(val_manifest, val_cache, val_index, spec, image_size, limit_val, rebuild_index=rebuild_index)
     else:
-        train_ds = RobotWindowDataset(train_manifest, train_index, spec, image_size, limit_train)
-        val_ds = RobotWindowDataset(val_manifest, val_index, spec, image_size, limit_val)
+        train_ds = RobotWindowDataset(train_manifest, train_index, spec, image_size, limit_train, rebuild_index=rebuild_index)
+        val_ds = RobotWindowDataset(val_manifest, val_index, spec, image_size, limit_val, rebuild_index=rebuild_index)
     return train_ds, val_ds

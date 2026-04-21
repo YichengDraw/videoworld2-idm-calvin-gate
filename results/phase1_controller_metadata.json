@@ -1,0 +1,27 @@
+{
+  "bc_vis": {
+    "conditioning": "direct_policy",
+    "privileged_future_codes": false,
+    "deployable_without_future_labels": true
+  },
+  "bc_vis_proprio": {
+    "conditioning": "direct_policy",
+    "privileged_future_codes": false,
+    "deployable_without_future_labels": true
+  },
+  "pair_idm_gtcode": {
+    "conditioning": "ground_truth_future_codes",
+    "privileged_future_codes": true,
+    "deployable_without_future_labels": false
+  },
+  "history_idm_gtcode": {
+    "conditioning": "ground_truth_future_codes",
+    "privileged_future_codes": true,
+    "deployable_without_future_labels": false
+  },
+  "vw2_hidden_mlp_action_head": {
+    "conditioning": "direct_mlp_policy",
+    "privileged_future_codes": false,
+    "deployable_without_future_labels": true
+  }
+}

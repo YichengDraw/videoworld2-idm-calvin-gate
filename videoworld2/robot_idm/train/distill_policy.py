@@ -13,7 +13,7 @@ from videoworld2.robot_idm.utils.config import load_config
 from videoworld2.robot_idm.utils.factory import build_direct_policy, build_state_encoder
 from videoworld2.robot_idm.utils.logging_utils import ExperimentLogger
 from videoworld2.robot_idm.utils.metrics import action_mse, detach_metrics, discounted_gaussian_nll
-from videoworld2.robot_idm.utils.runtime import resolve_device, seed_all, to_device
+from videoworld2.robot_idm.utils.runtime import configure_determinism, resolve_device, to_device
 
 
 def main() -> None:
@@ -24,7 +24,7 @@ def main() -> None:
     args = parser.parse_args()
 
     cfg = load_config(args.config)
-    seed_all(int(cfg["training"].get("seed", 7)))
+    configure_determinism(int(cfg["training"].get("seed", 7)), deterministic=bool(cfg["training"].get("deterministic", True)))
     device = resolve_device(args.device)
     adapter = DLDMLocalAdapter(cfg["adapter"]).to(device)
     ensure_code_caches(cfg, adapter=adapter, device=device)
@@ -122,6 +122,15 @@ def main() -> None:
                 "best_metric": best_metric,
                 "state_encoder": state_encoder.state_dict(),
                 "direct_policy": student.state_dict(),
+                "model_kind": "direct_policy",
+                "model_metadata": {
+                    "checkpoint_key": "direct_policy",
+                    "policy_variant": cfg.get("policy", {}).get("variant", ""),
+                    "idm_variant": cfg.get("idm", {}).get("variant", ""),
+                    "action_dim": int(action_dim),
+                    "action_chunk": int(cfg["data"].get("action_chunk", 8)),
+                    "model": cfg.get("model", {}),
+                },
                 "optimizer": optimizer.state_dict(),
             },
             is_best=is_best,

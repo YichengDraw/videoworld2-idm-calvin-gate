@@ -12,7 +12,7 @@ from videoworld2.robot_idm.utils.config import load_config
 from videoworld2.robot_idm.utils.factory import build_state_encoder, build_verifier
 from videoworld2.robot_idm.utils.logging_utils import ExperimentLogger
 from videoworld2.robot_idm.utils.metrics import detach_metrics, planner_accuracy
-from videoworld2.robot_idm.utils.runtime import resolve_device, seed_all, to_device
+from videoworld2.robot_idm.utils.runtime import configure_determinism, resolve_device, to_device
 
 
 def run_epoch(data_loader, state_encoder, verifier, optimizer, device: torch.device, training: bool) -> dict[str, float]:
@@ -48,7 +48,7 @@ def main() -> None:
     args = parser.parse_args()
 
     cfg = load_config(args.config)
-    seed_all(int(cfg["training"].get("seed", 7)))
+    configure_determinism(int(cfg["training"].get("seed", 7)), deterministic=bool(cfg["training"].get("deterministic", True)))
     device = resolve_device(args.device)
     adapter = DLDMLocalAdapter(cfg["adapter"]).to(device)
     ensure_code_caches(cfg, adapter=adapter, device=device)

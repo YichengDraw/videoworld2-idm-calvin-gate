@@ -129,6 +129,18 @@ def build_window_index(
     return index
 
 
+def robot_index_metadata(episode_entries: list[dict[str, Any]], spec: WindowSpec, image_size: int | None) -> dict[str, Any]:
+    return {
+        "metadata_version": 2,
+        "spec": asdict(spec),
+        "image_size": image_size,
+        "episodes": [
+            {"episode_id": entry.get("episode_id"), "path": entry.get("path")}
+            for entry in episode_entries
+        ],
+    }
+
+
 class RobotWindowDataset(Dataset):
     def __init__(
         self,
@@ -149,11 +161,15 @@ class RobotWindowDataset(Dataset):
             self.index_path = Path(index_path)
             if not self.index_path.is_absolute():
                 self.index_path = Path(manifest_path).resolve().parent / self.index_path
+            expected_metadata = robot_index_metadata(self.episode_entries, self.spec, self.image_size)
             if rebuild_index or not self.index_path.exists():
                 index = build_window_index(self.episode_entries, self.spec)
-                save_json({"windows": index, "spec": asdict(self.spec)}, self.index_path)
+                save_json({"windows": index, "metadata": expected_metadata, "spec": asdict(self.spec)}, self.index_path)
             else:
-                index = load_json(self.index_path)["windows"]
+                payload = load_json(self.index_path)
+                if payload.get("metadata") != expected_metadata:
+                    raise ValueError(f"Window index metadata mismatch in {self.index_path}; rebuild the index.")
+                index = payload["windows"]
         else:
             index = build_window_index(self.episode_entries, self.spec)
 

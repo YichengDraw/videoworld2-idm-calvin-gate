@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1320" height="620" viewBox="0 0 1320 620" role="img" aria-labelledby="title desc">
+  <title id="title">VideoWorld2-IDM model pipeline</title>
+  <desc id="desc">Manifest windows become robot observations and future clips. Future clips feed the local code cache. History feeds the state encoder. Planner, IDM, direct policy, and MLP head produce action chunks that are evaluated offline or in mock closed loop.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#1f2937"/>
+    </marker>
+    <style>
+      .bg { fill: #f8fafc; }
+      .box { fill: #ffffff; stroke: #243b53; stroke-width: 2; rx: 8; }
+      .priv { fill: #fff7ed; stroke: #c2410c; stroke-width: 2; rx: 8; }
+      .eval { fill: #ecfdf5; stroke: #047857; stroke-width: 2; rx: 8; }
+      .warn { fill: #fef2f2; stroke: #b91c1c; stroke-width: 2; rx: 8; }
+      .txt { font: 18px Arial, sans-serif; fill: #111827; }
+      .small { font: 14px Arial, sans-serif; fill: #374151; }
+      .title { font: 28px Arial, sans-serif; font-weight: 700; fill: #111827; }
+      .edge { stroke: #1f2937; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+      .dash { stroke: #c2410c; stroke-width: 2; fill: none; stroke-dasharray: 7 6; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect class="bg" width="1320" height="620"/>
+  <text class="title" x="36" y="52">VideoWorld2-IDM CALVIN Gate: Implemented Model Pipeline</text>
+  <text class="small" x="38" y="80">GT-code paths use future clips from the target trajectory and are privileged upper bounds.</text>
+
+  <rect class="box" x="40" y="130" width="180" height="82"/>
+  <text class="txt" x="62" y="164">Manifests</text>
+  <text class="small" x="62" y="188">CALVIN static or mock</text>
+
+  <rect class="box" x="280" y="130" width="190" height="82"/>
+  <text class="txt" x="304" y="160">Window dataset</text>
+  <text class="small" x="304" y="184">history, actions, future</text>
+
+  <rect class="box" x="535" y="64" width="220" height="112"/>
+  <text class="txt" x="558" y="98">StateEncoder</text>
+  <text class="small" x="558" y="124">RGB history</text>
+  <text class="small" x="558" y="146">proprio, lang, embodiment</text>
+
+  <rect class="priv" x="535" y="245" width="220" height="116"/>
+  <text class="txt" x="558" y="279">Local-code cache</text>
+  <text class="small" x="558" y="305">future_clip -> codes</text>
+  <text class="small" x="558" y="327">official / mock tokenizer</text>
+
+  <rect class="box" x="820" y="48" width="210" height="92"/>
+  <text class="txt" x="848" y="83">LatentPlanner</text>
+  <text class="small" x="848" y="107">causal predicted codes</text>
+
+  <rect class="box" x="820" y="190" width="210" height="112"/>
+  <text class="txt" x="843" y="224">Controller head</text>
+  <text class="small" x="843" y="250">HistoryAwareIDM</text>
+  <text class="small" x="843" y="272">DirectPolicy / MLP</text>
+
+  <rect class="box" x="820" y="358" width="210" height="92"/>
+  <text class="txt" x="850" y="393">Verifier</text>
+  <text class="small" x="850" y="417">optional reranking</text>
+
+  <rect class="eval" x="1090" y="176" width="190" height="88"/>
+  <text class="txt" x="1120" y="211">Action chunk</text>
+  <text class="small" x="1120" y="235">mean / log_std</text>
+
+  <rect class="eval" x="1090" y="318" width="190" height="82"/>
+  <text class="txt" x="1122" y="350">Offline gate</text>
+  <text class="small" x="1122" y="374">NLL, MSE, jerk</text>
+
+  <rect class="warn" x="1090" y="452" width="190" height="92"/>
+  <text class="txt" x="1114" y="486">Closed loop</text>
+  <text class="small" x="1114" y="510">mock-only in repo</text>
+
+  <path class="edge" d="M220 171 H280"/>
+  <path class="edge" d="M470 171 C500 154 510 126 535 120"/>
+  <path class="edge" d="M470 171 C508 210 508 285 535 303"/>
+  <path class="edge" d="M755 120 H820"/>
+  <path class="edge" d="M755 120 C788 146 794 206 820 228"/>
+  <path class="dash" d="M755 303 C788 292 794 256 820 246"/>
+  <path class="edge" d="M1030 246 H1090"/>
+  <path class="edge" d="M1030 404 C1060 380 1064 344 1090 352"/>
+  <path class="edge" d="M1185 264 V318"/>
+  <path class="edge" d="M1185 264 V452"/>
+  <path class="edge" d="M1030 94 C1062 100 1064 192 1090 206"/>
+</svg>

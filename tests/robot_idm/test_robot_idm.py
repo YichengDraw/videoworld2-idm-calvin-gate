@@ -14,6 +14,7 @@ from videoworld2.robot_idm.models.latent_planner import LatentPlanner
 from videoworld2.robot_idm.train.common import sample_code_conditioning
 from videoworld2.robot_idm.train.train_idm import build_trainable_policy
 from videoworld2.robot_idm.utils.config import load_config
+from videoworld2.robot_idm.utils.factory import validate_manifest_pair
 from videoworld2.robot_idm.utils.latent_cache import LatentCodeCache
 from videoworld2.robot_idm.utils.runtime import save_json
 
@@ -68,12 +69,34 @@ class RobotIDMTests(unittest.TestCase):
             self.assertTrue(torch.equal(record["codes"], torch.tensor([2, 3, 4])))
             self.assertIn(("episode_0", 4), cache)
 
+    def test_latent_cache_rejects_stale_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            cache_path = Path(tmp_dir) / "codes.pt"
+            records = [{"episode_id": "episode_0", "t": 4, "codes": torch.tensor([1]), "embeds": torch.randn(1, 4)}]
+            LatentCodeCache.save(records, cache_path, metadata={"metadata_version": 2, "split": "train"})
+
+            with self.assertRaisesRegex(ValueError, "metadata mismatch"):
+                LatentCodeCache(cache_path, expected_metadata={"metadata_version": 2, "split": "val"})
+
     def test_planner_output_shape(self) -> None:
         planner = LatentPlanner(vocab_size=32, n_codes=4, d_model=64, depth=2, n_heads=4)
         state_tokens = torch.randn(3, 6, 64)
         target_codes = torch.randint(0, 32, (3, 4))
         logits = planner(state_tokens, target_codes=target_codes)
         self.assertEqual(logits.shape, (3, 4, 32))
+
+    def test_planner_causal_mask_blocks_future_target_leakage(self) -> None:
+        torch.manual_seed(0)
+        planner = LatentPlanner(vocab_size=32, n_codes=4, d_model=64, depth=2, n_heads=4, dropout=0.0)
+        planner.eval()
+        state_tokens = torch.randn(1, 6, 64)
+        target_a = torch.tensor([[1, 2, 3, 4]])
+        target_b = torch.tensor([[1, 2, 9, 4]])
+
+        logits_a = planner(state_tokens, target_codes=target_a)
+        logits_b = planner(state_tokens, target_codes=target_b)
+
+        self.assertTrue(torch.allclose(logits_a[:, :3], logits_b[:, :3], atol=1e-6))
 
     def test_idm_output_shape(self) -> None:
         idm = HistoryAwareIDM(action_dim=2, chunk=8, d_model=64, depth=2, n_heads=4)
@@ -115,6 +138,23 @@ class RobotIDMTests(unittest.TestCase):
                 planner=None,
                 training=False,
             )
+
+    def test_manifest_pair_rejects_overlapping_calvin_spans(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            train_manifest = root / "train_manifest.json"
+            val_manifest = root / "val_manifest.json"
+            save_json(
+                {"episodes": [{"episode_id": "train_0", "root": "/data/calvin", "start": 10, "end": 20}]},
+                train_manifest,
+            )
+            save_json(
+                {"episodes": [{"episode_id": "val_0", "root": "/data/calvin", "start": 18, "end": 30}]},
+                val_manifest,
+            )
+
+            with self.assertRaisesRegex(ValueError, "overlap"):
+                validate_manifest_pair(train_manifest, val_manifest)
 
     def test_load_config_preserves_adapter_source_dir(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -164,6 +204,38 @@ class RobotIDMTests(unittest.TestCase):
         mlp_model, mlp_key = build_trainable_policy(mlp_cfg, action_dim=2, device=device)
         self.assertNotIsInstance(mlp_model, HistoryAwareIDM)
         self.assertEqual(mlp_key, "direct_policy")
+
+    def test_mlp_eval_config_rejects_non_direct_checkpoint(self) -> None:
+        from videoworld2.robot_idm.eval.eval_offline_idm import load_policy_bundle
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            checkpoint_path = Path(tmp_dir) / "bad.pt"
+            torch.save({"idm": {}, "state_encoder": {}}, checkpoint_path)
+            cfg = {
+                "_meta": {"config_path": str(Path(tmp_dir) / "exp.yaml")},
+                "adapter": {"backend": "mock_geometry", "embed_dim": 64},
+                "data": {
+                    "action_dim": 2,
+                    "action_chunk": 8,
+                    "proprio_dim": 4,
+                    "use_proprio": True,
+                    "use_lang": True,
+                },
+                "model": {
+                    "image_backbone": "small_cnn",
+                    "d_model": 64,
+                    "temporal_depth": 2,
+                    "idm_depth": 2,
+                    "n_heads": 4,
+                    "num_embodiments": 8,
+                },
+                "idm": {"variant": "history", "use_future_codes": True, "use_past_actions": True},
+                "policy": {"variant": "mlp", "hidden_dim": 128},
+                "evaluation": {},
+            }
+
+            with self.assertRaisesRegex(ValueError, "architecture mismatch"):
+                load_policy_bundle(cfg, str(checkpoint_path), torch.device("cpu"))
 
 
 if __name__ == "__main__":

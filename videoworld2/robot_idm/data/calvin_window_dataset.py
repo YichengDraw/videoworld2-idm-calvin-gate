@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +47,36 @@ def build_calvin_window_index(episode_entries: list[dict[str, Any]], spec: Windo
     return index
 
 
+def calvin_index_metadata(episode_entries: list[dict[str, Any]], spec: WindowSpec, image_size: int | None) -> dict[str, Any]:
+    return {
+        "metadata_version": 2,
+        "spec": asdict(spec),
+        "image_size": image_size,
+        "episodes": [
+            {
+                "episode_id": entry.get("episode_id"),
+                "root": entry.get("root"),
+                "start": int(entry.get("start", -1)),
+                "end": int(entry.get("end", -1)),
+            }
+            for entry in episode_entries
+        ],
+    }
+
+
+def _load_or_rebuild_index(index_path: Path, episode_entries: list[dict[str, Any]], spec: WindowSpec, image_size: int | None, rebuild_index: bool) -> list[dict[str, Any]]:
+    expected_metadata = calvin_index_metadata(episode_entries, spec, image_size)
+    if rebuild_index or not index_path.exists():
+        index = build_calvin_window_index(episode_entries, spec)
+        save_json({"windows": index, "metadata": expected_metadata}, index_path)
+        return index
+
+    payload = load_json(index_path)
+    if payload.get("metadata") != expected_metadata:
+        raise ValueError(f"CALVIN window index metadata mismatch in {index_path}; rebuild the index.")
+    return payload["windows"]
+
+
 class CalvinWindowDataset(Dataset):
     def __init__(
         self,
@@ -69,11 +100,7 @@ class CalvinWindowDataset(Dataset):
             self.index_path = Path(index_path)
             if not self.index_path.is_absolute():
                 self.index_path = Path(manifest_path).resolve().parent / self.index_path
-            if rebuild_index or not self.index_path.exists():
-                index = build_calvin_window_index(self.episode_entries, self.spec)
-                save_json({"windows": index}, self.index_path)
-            else:
-                index = load_json(self.index_path)["windows"]
+            index = _load_or_rebuild_index(self.index_path, self.episode_entries, self.spec, self.image_size, rebuild_index)
         else:
             index = build_calvin_window_index(self.episode_entries, self.spec)
 
