@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import types
 import unittest
@@ -20,7 +21,7 @@ from videoworld2.robot_idm.utils.config import load_config
 from videoworld2.robot_idm.utils.factory import validate_manifest_pair
 from videoworld2.robot_idm.utils.latent_cache import LatentCodeCache
 from videoworld2.robot_idm.utils.phase0 import prepare_phase0_overfit_cfg
-from videoworld2.robot_idm.utils.runtime import save_json
+from videoworld2.robot_idm.utils.runtime import configure_determinism, save_json
 
 
 def _make_episode(path: Path, episode_id: str, length: int = 24) -> None:
@@ -178,6 +179,24 @@ class RobotIDMTests(unittest.TestCase):
             train_loader, val_loader = make_dataloaders(cfg, use_latent_cache=False)
             self.assertGreater(len(train_loader.dataset), 0)
             self.assertGreater(len(val_loader.dataset), 0)
+
+    def test_configure_determinism_enables_torch_deterministic_guards(self) -> None:
+        previous_env = os.environ.get("CUBLAS_WORKSPACE_CONFIG")
+        previous_deterministic = torch.are_deterministic_algorithms_enabled()
+        try:
+            os.environ.pop("CUBLAS_WORKSPACE_CONFIG", None)
+            configure_determinism(17, deterministic=True)
+
+            self.assertEqual(os.environ.get("CUBLAS_WORKSPACE_CONFIG"), ":4096:8")
+            self.assertFalse(torch.backends.cudnn.benchmark)
+            self.assertTrue(torch.backends.cudnn.deterministic)
+            self.assertTrue(torch.are_deterministic_algorithms_enabled())
+        finally:
+            if previous_env is None:
+                os.environ.pop("CUBLAS_WORKSPACE_CONFIG", None)
+            else:
+                os.environ["CUBLAS_WORKSPACE_CONFIG"] = previous_env
+            torch.use_deterministic_algorithms(previous_deterministic, warn_only=True)
 
     def test_mock_adapter_initialization_is_stable(self) -> None:
         torch.manual_seed(123)
