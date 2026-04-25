@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from collections import OrderedDict
 from dataclasses import asdict
 from pathlib import Path
@@ -71,22 +72,38 @@ def _calvin_frame_fingerprint(root_value: str | Path, frame_idx: int) -> dict[st
     payload: dict[str, Any] = {"path": frame_path.as_posix(), "exists": frame_path.exists()}
     if frame_path.exists() and frame_path.is_file():
         stat = frame_path.stat()
-        payload.update({"size": int(stat.st_size), "mtime_ns": int(stat.st_mtime_ns)})
+        payload.update({"size": int(stat.st_size), "mtime_ns": int(stat.st_mtime_ns), "sha256": _file_sha256(frame_path)})
     return payload
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _normalise_calvin_entries(episode_entries: list[dict[str, Any]], manifest_dir: Path) -> list[dict[str, Any]]:
     normalised = []
+    seen: set[Any] = set()
+    duplicates: list[Any] = []
     for entry in episode_entries:
         item = dict(entry)
+        episode_id = item["episode_id"]
+        if episode_id in seen:
+            duplicates.append(episode_id)
+        seen.add(episode_id)
         item["root"] = _normalise_calvin_root(item["root"], manifest_dir=manifest_dir)
         normalised.append(item)
+    if duplicates:
+        raise ValueError(f"CALVIN manifest has duplicate episode ids: {duplicates[:5]}")
     return normalised
 
 
 def calvin_index_metadata(episode_entries: list[dict[str, Any]], spec: WindowSpec, image_size: int | None) -> dict[str, Any]:
     return {
-        "metadata_version": 2,
+        "metadata_version": 3,
         "spec": asdict(spec),
         "image_size": image_size,
         "episodes": [
@@ -101,8 +118,10 @@ def calvin_index_metadata(episode_entries: list[dict[str, Any]], spec: WindowSpe
         "episode_frame_files": [
             {
                 "episode_id": entry.get("episode_id"),
-                "first": _calvin_frame_fingerprint(entry.get("root", ""), int(entry.get("start", -1))),
-                "last": _calvin_frame_fingerprint(entry.get("root", ""), int(entry.get("end", -1))),
+                "frames": [
+                    _calvin_frame_fingerprint(entry.get("root", ""), frame_idx)
+                    for frame_idx in range(int(entry.get("start", -1)), int(entry.get("end", -1)) + 1)
+                ],
             }
             for entry in episode_entries
         ],
@@ -111,14 +130,16 @@ def calvin_index_metadata(episode_entries: list[dict[str, Any]], spec: WindowSpe
 
 def _load_or_rebuild_index(index_path: Path, episode_entries: list[dict[str, Any]], spec: WindowSpec, image_size: int | None, rebuild_index: bool) -> list[dict[str, Any]]:
     expected_metadata = calvin_index_metadata(episode_entries, spec, image_size)
+    expected_index = build_calvin_window_index(episode_entries, spec)
     if rebuild_index or not index_path.exists():
-        index = build_calvin_window_index(episode_entries, spec)
-        save_json({"windows": index, "metadata": expected_metadata}, index_path)
-        return index
+        save_json({"windows": expected_index, "metadata": expected_metadata}, index_path)
+        return expected_index
 
     payload = load_json(index_path)
     if payload.get("metadata") != expected_metadata:
         raise ValueError(f"CALVIN window index metadata mismatch in {index_path}; rebuild the index.")
+    if payload.get("windows") != expected_index:
+        raise ValueError(f"CALVIN window index contents mismatch in {index_path}; rebuild the index.")
     return payload["windows"]
 
 
@@ -267,6 +288,8 @@ class CalvinLatentWindowDataset(CalvinWindowDataset):
         image_size: int | None = None,
         limit_windows: int | None = None,
         rebuild_index: bool = False,
+        expected_cache_metadata: dict[str, Any] | None = None,
+        expected_cache_keys: set[str] | None = None,
     ) -> None:
         super().__init__(
             manifest_path=manifest_path,
@@ -276,7 +299,16 @@ class CalvinLatentWindowDataset(CalvinWindowDataset):
             limit_windows=limit_windows,
             rebuild_index=rebuild_index,
         )
-        self.cache = LatentCodeCache(cache_path)
+        if expected_cache_metadata is None:
+            raise ValueError("CalvinLatentWindowDataset requires expected_cache_metadata; call ensure_code_caches before constructing latent datasets.")
+        expected_keys = expected_cache_keys or {LatentCodeCache.make_key(record["episode_id"], int(record["t"])) for record in self.index}
+        self.cache = LatentCodeCache(
+            cache_path,
+            expected_metadata=expected_cache_metadata,
+            expected_keys=expected_keys,
+            allow_legacy_metadata=False,
+            require_metadata=True,
+        )
 
     def __getitem__(self, item: int) -> dict[str, Any]:
         sample = super().__getitem__(item)

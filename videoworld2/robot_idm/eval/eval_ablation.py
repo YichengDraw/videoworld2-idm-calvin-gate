@@ -75,11 +75,11 @@ def main() -> None:
     device = resolve_device(args.device)
     results = []
     for experiment in cfg["ablation"]["experiments"]:
-        exp_config_path = resolve_config_path(cfg, experiment["config"])
+        exp_config_path = resolve_config_path(cfg, experiment["config"], key_path="ablation.experiments.config")
         exp_cfg = load_config(exp_config_path)
-        checkpoint_path = resolve_config_path(cfg, experiment["checkpoint"])
+        checkpoint_path = resolve_config_path(cfg, experiment["checkpoint"], key_path="ablation.experiments.checkpoint")
         if "planner_checkpoint" in experiment:
-            exp_cfg["idm"]["planner_checkpoint"] = str(resolve_config_path(cfg, experiment["planner_checkpoint"]))
+            exp_cfg["idm"]["planner_checkpoint"] = str(resolve_config_path(cfg, experiment["planner_checkpoint"], key_path="ablation.experiments.planner_checkpoint"))
         offline = evaluate_offline(exp_cfg, checkpoint_path=str(checkpoint_path), device=device)
         closed_loop = evaluate_closed_loop(exp_cfg, checkpoint_path=str(checkpoint_path), device=device)
         results.append(
@@ -93,12 +93,12 @@ def main() -> None:
 
     output_json = Path(cfg["ablation"]["output_json"])
     if not output_json.is_absolute():
-        output_json = resolve_config_path(cfg, cfg["ablation"]["output_json"])
+        output_json = resolve_config_path(cfg, cfg["ablation"]["output_json"], key_path="ablation.output_json")
     save_json({"results": results}, output_json)
 
     report_path = Path(cfg["ablation"]["report_path"])
     if not report_path.is_absolute():
-        report_path = resolve_config_path(cfg, cfg["ablation"]["report_path"])
+        report_path = resolve_config_path(cfg, cfg["ablation"]["report_path"], key_path="ablation.report_path")
     render_report(results, report_path)
 
 

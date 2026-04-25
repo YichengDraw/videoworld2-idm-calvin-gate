@@ -15,7 +15,7 @@ This repository packages the experiment code, configs, scripts, public reports, 
 
 ![VideoWorld2-IDM model pipeline](assets/readme_figs/vw2_idm_model_pipeline.png)
 
-The implemented `robot_idm` pipeline feeds windowed robot history through a state encoder and conditions controllers on either direct policy inputs, predicted latent codes, or privileged ground-truth future codes.
+The implemented `robot_idm` pipeline feeds windowed robot history through a state encoder and supports direct policy inputs, predicted latent codes, and privileged ground-truth future codes. The committed Phase 1 CALVIN table publishes only direct-policy rows plus privileged GT-code diagnostics; it does not publish a predicted-code CALVIN claim.
 
 ![Reliability cleanup flow](assets/readme_figs/vw2_idm_experiment_flow.png)
 
@@ -120,7 +120,8 @@ python -m videoworld2.robot_idm.eval.eval_offline_idm configs/vw2_idm/exp_gt_cod
   is still mock-only in this snapshot. A real CALVIN closed-loop evaluator was requested later and is not implemented here yet.
 - `videoworld2/robot_idm/eval/eval_offline_idm.py`
   includes the planner-load guard so GT-code runs do not incorrectly require a planner checkpoint.
-- Cache metadata now fingerprints every CALVIN frame in each manifest span, and manifest validation rejects shared file-backed episode sources across train/val splits.
+- Cache metadata now fingerprints adapter checkpoint contents and every CALVIN frame in each manifest span. Saved window indexes are re-derived and compared before reuse, and manifest validation rejects shared file-backed sources plus byte-level or semantic copied CALVIN/frame contents across and within splits.
+- Policy checkpoints bind IDM conditioning semantics plus planner/teacher checkpoint identities; distillation preserves predicted-code teacher conditioning, and verifier-assisted eval reloads the verifier's paired state encoder before reranking.
 - Explicit resume and standalone evaluation checkpoint paths are guarded before loading, including Windows rejection of unremapped POSIX remote paths.
 
 ## Results
@@ -156,6 +157,11 @@ Machine-readable metrics are committed in:
 
 `History_IDM_GTcode` and `Pair_IDM_GTcode` use ground-truth future latent codes from the target trajectory. They are privileged upper-bound checks, not deployable closed-loop policies.
 The JSON and CSV metrics files duplicate the privilege/deployability flags so a single-file consumer does not need to join companion metadata before filtering deployable rows.
+Regenerate the committed Phase 1 table schema and provenance flags with:
+
+```bash
+python scripts/package_phase1_results.py
+```
 
 ### Current decision status
 

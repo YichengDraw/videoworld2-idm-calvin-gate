@@ -6,13 +6,55 @@ import torch
 import torch.nn.functional as F
 
 from videoworld2.robot_idm.models.dldm_local_adapter import DLDMLocalAdapter
-from videoworld2.robot_idm.train.common import batch_to_state_encoder_inputs, ensure_code_caches, make_dataloaders, make_output_dir, maybe_resume_training, resolve_config_path
-from videoworld2.robot_idm.utils.checkpoint import load_checkpoint, save_checkpoint
+from videoworld2.robot_idm.train.common import (
+    batch_to_state_encoder_inputs,
+    ensure_code_caches,
+    make_dataloaders,
+    make_output_dir,
+    maybe_resume_training,
+    resolve_config_path,
+    sample_code_conditioning,
+)
+from videoworld2.robot_idm.train.train_idm import load_planner_bundle
+from videoworld2.robot_idm.utils.checkpoint import (
+    checkpoint_reference,
+    load_checkpoint,
+    policy_checkpoint_metadata,
+    save_checkpoint,
+    teacher_policy_checkpoint_metadata,
+    validate_checkpoint_metadata,
+)
 from videoworld2.robot_idm.utils.config import load_config
 from videoworld2.robot_idm.utils.factory import build_direct_policy, build_state_encoder
 from videoworld2.robot_idm.utils.logging_utils import ExperimentLogger
 from videoworld2.robot_idm.utils.metrics import action_mse, detach_metrics, discounted_gaussian_nll
 from videoworld2.robot_idm.utils.runtime import configure_determinism, resolve_device, to_device
+
+
+def distill_teacher_metadata(cfg: dict, action_dim: int) -> dict:
+    checkpoint_refs = {}
+    idm_cfg = cfg.get("idm", {})
+    planner_checkpoint = idm_cfg.get("planner_checkpoint")
+    if planner_checkpoint and (
+        idm_cfg.get("code_source", "gt") == "predicted"
+        or (bool(idm_cfg.get("mixed_code_training", False)) and float(idm_cfg.get("mixed_code_ratio_pred", 0.0)) > 0.0)
+    ):
+        checkpoint_refs["planner_checkpoint"] = checkpoint_reference(
+            resolve_config_path(cfg, planner_checkpoint, key_path="idm.planner_checkpoint")
+        )
+    return teacher_policy_checkpoint_metadata(cfg, action_dim, checkpoint_refs=checkpoint_refs or None)
+
+
+def teacher_future_code_embeds(cfg: dict, batch: dict, teacher_tokens: torch.Tensor, adapter, teacher_planner):
+    future_embeds, _ = sample_code_conditioning(
+        cfg=cfg,
+        batch=batch,
+        state_tokens=teacher_tokens,
+        adapter=adapter,
+        planner=teacher_planner,
+        training=False,
+    )
+    return future_embeds
 
 
 def main() -> None:
@@ -35,9 +77,14 @@ def main() -> None:
     teacher_checkpoint = cfg.get("distill", {}).get("teacher_checkpoint")
     teacher_encoder = None
     teacher_idm = None
+    teacher_planner_encoder = None
+    teacher_planner = None
     if teacher_checkpoint:
-        teacher_checkpoint = str(resolve_config_path(cfg, teacher_checkpoint))
+        teacher_metadata = distill_teacher_metadata(cfg, action_dim)
+        teacher_planner_encoder, teacher_planner = load_planner_bundle(cfg, adapter, device)
+        teacher_checkpoint = str(resolve_config_path(cfg, teacher_checkpoint, key_path="distill.teacher_checkpoint"))
         teacher_state = load_checkpoint(teacher_checkpoint, map_location=device)
+        validate_checkpoint_metadata(teacher_state, teacher_metadata, teacher_checkpoint)
         from videoworld2.robot_idm.utils.factory import build_idm
 
         teacher_encoder = build_state_encoder(cfg).to(device)
@@ -46,6 +93,9 @@ def main() -> None:
         teacher_idm.load_state_dict(teacher_state["idm"], strict=True)
         teacher_encoder.eval()
         teacher_idm.eval()
+    student_checkpoint_refs = {}
+    if teacher_checkpoint:
+        student_checkpoint_refs["teacher_checkpoint"] = checkpoint_reference(teacher_checkpoint)
     state_encoder = build_state_encoder(cfg).to(device)
     student = build_direct_policy(cfg, action_dim=action_dim).to(device)
     optimizer = torch.optim.AdamW(
@@ -60,6 +110,7 @@ def main() -> None:
         modules={"state_encoder": state_encoder, "direct_policy": student},
         optimizer=optimizer,
         explicit_resume=args.resume,
+        expected_metadata=policy_checkpoint_metadata(cfg, "direct_policy", action_dim, checkpoint_refs=student_checkpoint_refs or None),
     )
     if best_metric == float("-inf"):
         best_metric = float("inf")
@@ -84,10 +135,14 @@ def main() -> None:
             if teacher_encoder is not None and teacher_idm is not None:
                 with torch.no_grad():
                     teacher_tokens, _ = teacher_encoder(**state_inputs)
+                    planning_tokens = teacher_tokens
+                    if teacher_planner_encoder is not None:
+                        planning_tokens, _ = teacher_planner_encoder(**state_inputs)
+                    future_code_embeds = teacher_future_code_embeds(cfg, batch, planning_tokens, adapter, teacher_planner)
                     teacher_mean, _ = teacher_idm(
                         state_tokens=teacher_tokens,
-                        future_code_embeds=batch["future_code_embeds"],
-                        past_action_hist=batch["past_action_hist"],
+                        future_code_embeds=future_code_embeds if cfg["idm"].get("use_future_codes", True) else None,
+                        past_action_hist=batch["past_action_hist"] if cfg["idm"].get("use_past_actions", True) else None,
                         embodiment_id=batch["embodiment_id"].long(),
                     )
                 loss = loss + float(cfg.get("distill", {}).get("lambda_kl", 0.5)) * F.mse_loss(mean, teacher_mean)
@@ -121,14 +176,7 @@ def main() -> None:
                 "state_encoder": state_encoder.state_dict(),
                 "direct_policy": student.state_dict(),
                 "model_kind": "direct_policy",
-                "model_metadata": {
-                    "checkpoint_key": "direct_policy",
-                    "policy_variant": cfg.get("policy", {}).get("variant", ""),
-                    "idm_variant": cfg.get("idm", {}).get("variant", ""),
-                    "action_dim": int(action_dim),
-                    "action_chunk": int(cfg["data"].get("action_chunk", 8)),
-                    "model": cfg.get("model", {}),
-                },
+                "model_metadata": policy_checkpoint_metadata(cfg, "direct_policy", action_dim, checkpoint_refs=student_checkpoint_refs or None),
                 "optimizer": optimizer.state_dict(),
             },
             is_best=is_best,

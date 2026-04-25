@@ -4,8 +4,8 @@ flowchart TB
   batch --> cache["VideoWorld2 local-code cache"]
   cache --> future["GT future_codes / future_code_embeds<br/>(privileged upper bound)"]
   batch --> state["StateEncoder"]
-  state --> planner["LatentPlanner (optional predicted codes)"]
-  planner --> pred["predicted code embeds"]
+  state --> planner["LatentPlanner (optional predicted-code branch)"]
+  planner --> pred["predicted code embeds<br/>(implemented; no published Phase 1 claim)"]
   state --> idm["HistoryAwareIDM / DirectPolicy / MLPActionHead"]
   future --> idm
   pred --> idm

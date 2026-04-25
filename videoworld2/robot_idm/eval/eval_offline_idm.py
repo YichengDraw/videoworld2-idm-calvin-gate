@@ -11,7 +11,13 @@ from videoworld2.robot_idm.models.inverse_dynamics import HistoryAwareIDM
 from videoworld2.robot_idm.models.latent_planner import LatentPlanner
 from videoworld2.robot_idm.models.state_encoder import StateEncoder
 from videoworld2.robot_idm.train.common import batch_to_state_encoder_inputs, ensure_code_caches, make_dataloaders, resolve_config_path
-from videoworld2.robot_idm.utils.checkpoint import load_checkpoint
+from videoworld2.robot_idm.utils.checkpoint import (
+    auxiliary_checkpoint_metadata,
+    checkpoint_reference,
+    load_checkpoint,
+    policy_checkpoint_metadata,
+    validate_checkpoint_metadata as validate_checkpoint_metadata_payload,
+)
 from videoworld2.robot_idm.utils.config import load_config
 from videoworld2.robot_idm.utils.factory import build_direct_policy, build_idm, build_planner, build_state_encoder, build_verifier
 from videoworld2.robot_idm.utils.metrics import action_mse, detach_metrics, discounted_gaussian_nll, jerk_metric
@@ -24,7 +30,7 @@ def expected_checkpoint_key(cfg: dict[str, Any]) -> str:
     return "idm"
 
 
-def validate_checkpoint_metadata(cfg: dict[str, Any], checkpoint: dict[str, Any], checkpoint_path: str) -> str:
+def validate_policy_checkpoint_metadata(cfg: dict[str, Any], checkpoint: dict[str, Any], checkpoint_path: str, action_dim: int) -> str:
     expected_key = expected_checkpoint_key(cfg)
     if expected_key not in checkpoint:
         available = sorted(key for key in checkpoint if key in {"idm", "direct_policy"})
@@ -32,19 +38,12 @@ def validate_checkpoint_metadata(cfg: dict[str, Any], checkpoint: dict[str, Any]
             f"Checkpoint architecture mismatch for {checkpoint_path}: "
             f"config expects {expected_key}, available policy states are {available}."
         )
-    metadata = checkpoint.get("model_metadata", {})
-    if metadata and metadata.get("checkpoint_key") != expected_key:
-        raise ValueError(
-            f"Checkpoint metadata mismatch for {checkpoint_path}: "
-            f"config expects {expected_key}, checkpoint metadata says {metadata.get('checkpoint_key')}."
-        )
-    if metadata and "policy_variant" in metadata:
-        cfg_policy = cfg.get("policy", {}).get("variant", "")
-        if metadata.get("policy_variant", "") != cfg_policy:
-            raise ValueError(
-                f"Checkpoint policy variant mismatch for {checkpoint_path}: "
-                f"config={cfg_policy!r}, checkpoint={metadata.get('policy_variant', '')!r}."
-            )
+    checkpoint_refs = {}
+    idm_cfg = cfg.get("idm", {})
+    planner_checkpoint = cfg.get("idm", {}).get("planner_checkpoint")
+    if planner_checkpoint and (idm_cfg.get("code_source", "gt") == "predicted" or bool(idm_cfg.get("mixed_code_training", False))):
+        checkpoint_refs["planner_checkpoint"] = checkpoint_reference(resolve_config_path(cfg, planner_checkpoint, key_path="idm.planner_checkpoint"))
+    validate_checkpoint_metadata_payload(checkpoint, policy_checkpoint_metadata(cfg, expected_key, action_dim, checkpoint_refs=checkpoint_refs or None), checkpoint_path)
     return expected_key
 
 
@@ -54,7 +53,7 @@ def load_policy_bundle(cfg: dict[str, Any], checkpoint_path: str, device: torch.
     state_encoder = build_state_encoder(cfg).to(device)
     action_dim = int(cfg["data"].get("action_dim", 2))
     use_predicted_codes = cfg.get("idm", {}).get("code_source", "gt") == "predicted"
-    checkpoint_key = validate_checkpoint_metadata(cfg, checkpoint, checkpoint_path)
+    checkpoint_key = validate_policy_checkpoint_metadata(cfg, checkpoint, checkpoint_path, action_dim)
     if checkpoint_key == "direct_policy":
         idm = build_direct_policy(cfg, action_dim=action_dim).to(device)
         idm.load_state_dict(checkpoint["direct_policy"], strict=True)
@@ -67,10 +66,12 @@ def load_policy_bundle(cfg: dict[str, Any], checkpoint_path: str, device: torch.
 
     planner_encoder = None
     planner = None
+    verifier_encoder = None
     planner_checkpoint = cfg.get("idm", {}).get("planner_checkpoint")
     if planner_checkpoint and use_predicted_codes:
-        planner_checkpoint = str(resolve_config_path(cfg, planner_checkpoint))
+        planner_checkpoint = str(resolve_config_path(cfg, planner_checkpoint, key_path="idm.planner_checkpoint"))
         planner_state = load_checkpoint(planner_checkpoint, map_location=device)
+        validate_checkpoint_metadata_payload(planner_state, auxiliary_checkpoint_metadata(cfg, "planner"), planner_checkpoint)
         planner_encoder = build_state_encoder(cfg).to(device)
         planner = build_planner(cfg, adapter).to(device)
         planner_encoder.load_state_dict(planner_state["state_encoder"], strict=True)
@@ -81,23 +82,27 @@ def load_policy_bundle(cfg: dict[str, Any], checkpoint_path: str, device: torch.
     verifier = None
     verifier_checkpoint = cfg.get("evaluation", {}).get("verifier_checkpoint")
     if verifier_checkpoint:
-        verifier_checkpoint = str(resolve_config_path(cfg, verifier_checkpoint))
+        verifier_checkpoint = str(resolve_config_path(cfg, verifier_checkpoint, key_path="evaluation.verifier_checkpoint"))
         verifier_state = load_checkpoint(verifier_checkpoint, map_location=device)
+        validate_checkpoint_metadata_payload(verifier_state, auxiliary_checkpoint_metadata(cfg, "verifier", action_dim=action_dim), verifier_checkpoint)
+        verifier_encoder = build_state_encoder(cfg).to(device)
         verifier = build_verifier(cfg, adapter, action_dim=action_dim).to(device)
+        verifier_encoder.load_state_dict(verifier_state["state_encoder"], strict=True)
         verifier.load_state_dict(verifier_state["verifier"], strict=True)
+        verifier_encoder.eval()
         verifier.eval()
-    return adapter, state_encoder, idm, planner_encoder, planner, verifier
+    return adapter, state_encoder, idm, planner_encoder, planner, verifier_encoder, verifier
 
 
 @torch.no_grad()
 def evaluate_offline(cfg: dict[str, Any], checkpoint_path: str, device: torch.device | None = None) -> dict[str, float]:
-    configure_determinism(int(cfg["training"].get("seed", 7)), deterministic=bool(cfg["training"].get("deterministic", True)))
+    configure_determinism(int(cfg["training"].get("seed", 7)), deterministic=bool(cfg.get("evaluation", {}).get("deterministic", True)))
     device = device or resolve_device("auto")
     ensure_code_caches(cfg, adapter=DLDMLocalAdapter(cfg["adapter"]).to(device), device=device)
     _, val_loader = make_dataloaders(cfg, use_latent_cache=True)
     sample_batch = val_loader.dataset[0]
     cfg["data"]["action_dim"] = int(sample_batch["action_chunk"].size(-1))
-    adapter, state_encoder, idm, planner_encoder, planner, verifier = load_policy_bundle(cfg, checkpoint_path, device)
+    adapter, state_encoder, idm, planner_encoder, planner, verifier_encoder, verifier = load_policy_bundle(cfg, checkpoint_path, device)
 
     totals = {"action_nll": 0.0, "action_mse": 0.0, "jerk": 0.0, "planner_code_accuracy": 0.0}
     count = 0
@@ -129,11 +134,14 @@ def evaluate_offline(cfg: dict[str, Any], checkpoint_path: str, device: torch.de
         )
 
         if verifier is not None and cfg.get("evaluation", {}).get("use_verifier", False):
+            verifier_tokens = state_tokens
+            if verifier_encoder is not None:
+                verifier_tokens, _ = verifier_encoder(**state_inputs)
             samples = []
             for _ in range(int(cfg["evaluation"].get("num_candidates", 4))):
                 samples.append(mean + torch.randn_like(mean) * log_std.exp())
             candidate_actions = torch.stack(samples, dim=1)
-            reranked, _ = verifier.rerank(state_tokens, candidate_actions, target_codes)
+            reranked, _ = verifier.rerank(verifier_tokens, candidate_actions, target_codes)
             mean = reranked
             log_std = torch.zeros_like(reranked)
 

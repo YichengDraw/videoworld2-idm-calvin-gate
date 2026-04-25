@@ -38,14 +38,14 @@ def _oracle_future_clip(sample: dict[str, Any], horizon: int) -> torch.Tensor:
 def evaluate_closed_loop(cfg: dict[str, Any], checkpoint_path: str, device: torch.device | None = None) -> dict[str, float]:
     if cfg["data"].get("dataset_type") != "mock":
         raise ValueError("Closed-loop evaluation currently requires dataset_type=mock.")
-    configure_determinism(int(cfg["training"].get("seed", 7)), deterministic=bool(cfg["training"].get("deterministic", True)))
+    configure_determinism(int(cfg["training"].get("seed", 7)), deterministic=bool(cfg.get("evaluation", {}).get("deterministic", True)))
     device = device or resolve_device("auto")
     adapter = DLDMLocalAdapter(cfg["adapter"]).to(device)
     ensure_code_caches(cfg, adapter=adapter, device=device)
     _, val_dataset = build_train_val_datasets(cfg, use_latent_cache=True)
     sample = val_dataset[0]
     cfg["data"]["action_dim"] = int(sample["action_chunk"].size(-1))
-    adapter, state_encoder, idm, planner_encoder, planner, verifier = load_policy_bundle(cfg, checkpoint_path, device)
+    adapter, state_encoder, idm, planner_encoder, planner, verifier_encoder, verifier = load_policy_bundle(cfg, checkpoint_path, device)
 
     max_rollouts = int(cfg.get("evaluation", {}).get("num_rollouts", 8))
     execute_per_replan = int(cfg.get("evaluation", {}).get("execute_per_replan", cfg["data"].get("action_chunk", 8) // 2))
@@ -114,11 +114,19 @@ def evaluate_closed_loop(cfg: dict[str, Any], checkpoint_path: str, device: torc
             )
             action_chunk = mean[0]
             if use_verifier and verifier is not None and future_embeds is not None:
+                verifier_tokens = state_tokens
+                if verifier_encoder is not None:
+                    verifier_tokens, _ = verifier_encoder(
+                        rgb_hist=obs_hist.unsqueeze(0).to(device),
+                        proprio_hist=proprio_hist.unsqueeze(0).to(device),
+                        lang_texts=[sample["lang"]],
+                        embodiment_id=torch.tensor([sample["embodiment_id"]], device=device),
+                    )
                 candidates = []
                 for _ in range(num_candidates):
                     candidates.append(mean + torch.randn_like(mean) * log_std.exp())
                 candidate_actions = torch.stack(candidates, dim=1)
-                reranked, _ = verifier.rerank(state_tokens, candidate_actions, target_codes)
+                reranked, _ = verifier.rerank(verifier_tokens, candidate_actions, target_codes)
                 action_chunk = reranked[0]
 
             for action in action_chunk[:execute_per_replan].cpu():

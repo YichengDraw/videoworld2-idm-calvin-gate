@@ -17,10 +17,13 @@ class LatentCodeCache:
         expected_metadata: dict[str, Any] | None = None,
         expected_keys: set[str] | None = None,
         allow_legacy_metadata: bool = False,
+        require_metadata: bool = False,
     ) -> None:
         self.cache_path = Path(cache_path)
         payload = torch.load(self.cache_path, map_location="cpu", weights_only=False)
         self.metadata = payload.get("metadata", {})
+        if require_metadata and not self.metadata:
+            raise ValueError(f"Latent cache {self.cache_path} has no metadata; rebuild it with overwrite_cache=true.")
         records = payload.get("records", [])
         seen: set[str] = set()
         for record in records:

@@ -14,7 +14,7 @@ from videoworld2.robot_idm.train.common import (
     make_output_dir,
     maybe_resume_training,
 )
-from videoworld2.robot_idm.utils.checkpoint import save_checkpoint
+from videoworld2.robot_idm.utils.checkpoint import auxiliary_checkpoint_metadata, save_checkpoint
 from videoworld2.robot_idm.utils.config import load_config
 from videoworld2.robot_idm.utils.factory import build_planner, build_state_encoder
 from videoworld2.robot_idm.utils.logging_utils import ExperimentLogger
@@ -85,6 +85,7 @@ def main() -> None:
         modules={"state_encoder": state_encoder, "planner": planner},
         optimizer=optimizer,
         explicit_resume=args.resume,
+        expected_metadata=auxiliary_checkpoint_metadata(cfg, "planner"),
     )
 
     max_epochs = int(cfg["training"].get("max_epochs", 3))
@@ -104,6 +105,7 @@ def main() -> None:
                 "best_metric": best_metric,
                 "state_encoder": state_encoder.state_dict(),
                 "planner": planner.state_dict(),
+                "model_metadata": auxiliary_checkpoint_metadata(cfg, "planner"),
                 "optimizer": optimizer.state_dict(),
             },
             is_best=is_best,

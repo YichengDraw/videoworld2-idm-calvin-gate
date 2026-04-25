@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pickle
+import hashlib
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -157,8 +158,16 @@ def _file_fingerprint(path_value: str | Path, base_dir: str | Path | None = None
     payload: dict[str, Any] = {"path": resolved.as_posix(), "exists": resolved.exists()}
     if resolved.exists() and resolved.is_file():
         stat = resolved.stat()
-        payload.update({"size": int(stat.st_size), "mtime_ns": int(stat.st_mtime_ns)})
+        payload.update({"size": int(stat.st_size), "mtime_ns": int(stat.st_mtime_ns), "sha256": _file_sha256(resolved)})
     return payload
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _normalise_episode_entries(episode_entries: list[dict[str, Any]], manifest_dir: Path) -> list[dict[str, Any]]:
@@ -215,6 +224,9 @@ class RobotWindowDataset(Dataset):
                 payload = load_json(self.index_path)
                 if payload.get("metadata") != expected_metadata:
                     raise ValueError(f"Window index metadata mismatch in {self.index_path}; rebuild the index.")
+                expected_index = build_window_index(self.episode_entries, self.spec)
+                if payload.get("windows") != expected_index:
+                    raise ValueError(f"Window index contents mismatch in {self.index_path}; rebuild the index.")
                 index = payload["windows"]
         else:
             index = build_window_index(self.episode_entries, self.spec)

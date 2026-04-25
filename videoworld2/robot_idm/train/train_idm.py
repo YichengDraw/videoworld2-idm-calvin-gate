@@ -14,7 +14,14 @@ from videoworld2.robot_idm.train.common import (
     resolve_config_path,
     sample_code_conditioning,
 )
-from videoworld2.robot_idm.utils.checkpoint import load_checkpoint, save_checkpoint
+from videoworld2.robot_idm.utils.checkpoint import (
+    auxiliary_checkpoint_metadata,
+    checkpoint_reference,
+    load_checkpoint,
+    policy_checkpoint_metadata,
+    save_checkpoint,
+    validate_checkpoint_metadata,
+)
 from videoworld2.robot_idm.utils.config import load_config
 from videoworld2.robot_idm.utils.factory import build_direct_policy, build_idm, build_planner, build_state_encoder
 from videoworld2.robot_idm.utils.logging_utils import ExperimentLogger
@@ -24,10 +31,17 @@ from videoworld2.robot_idm.utils.runtime import configure_determinism, resolve_d
 
 def load_planner_bundle(cfg, adapter, device: torch.device):
     planner_ckpt = cfg.get("idm", {}).get("planner_checkpoint")
+    idm_cfg = cfg.get("idm", {})
+    needs_planner = idm_cfg.get("code_source", "gt") == "predicted" or (
+        bool(idm_cfg.get("mixed_code_training", False)) and float(idm_cfg.get("mixed_code_ratio_pred", 0.0)) > 0.0
+    )
+    if not needs_planner:
+        return None, None
     if not planner_ckpt:
         return None, None
-    planner_ckpt = str(resolve_config_path(cfg, planner_ckpt))
+    planner_ckpt = str(resolve_config_path(cfg, planner_ckpt, key_path="idm.planner_checkpoint"))
     checkpoint = load_checkpoint(planner_ckpt, map_location=device)
+    validate_checkpoint_metadata(checkpoint, auxiliary_checkpoint_metadata(cfg, "planner"), planner_ckpt)
     planner_encoder = build_state_encoder(cfg).to(device)
     planner = build_planner(cfg, adapter).to(device)
     planner_encoder.load_state_dict(checkpoint["state_encoder"], strict=True)
@@ -44,19 +58,12 @@ def build_trainable_policy(cfg, action_dim: int, device: torch.device):
 
 
 def checkpoint_model_metadata(cfg, checkpoint_key: str, action_dim: int) -> dict:
-    return {
-        "checkpoint_key": checkpoint_key,
-        "policy_variant": cfg.get("policy", {}).get("variant", ""),
-        "idm_variant": cfg.get("idm", {}).get("variant", ""),
-        "action_dim": int(action_dim),
-        "action_chunk": int(cfg["data"].get("action_chunk", 8)),
-        "model": cfg.get("model", {}),
-        "data": {
-            "use_proprio": bool(cfg["data"].get("use_proprio", True)),
-            "use_lang": bool(cfg["data"].get("use_lang", True)),
-            "proprio_dim": int(cfg["data"].get("proprio_dim", 4)),
-        },
-    }
+    checkpoint_refs = {}
+    idm_cfg = cfg.get("idm", {})
+    planner_ckpt = cfg.get("idm", {}).get("planner_checkpoint")
+    if planner_ckpt and (idm_cfg.get("code_source", "gt") == "predicted" or bool(idm_cfg.get("mixed_code_training", False))):
+        checkpoint_refs["planner_checkpoint"] = checkpoint_reference(resolve_config_path(cfg, planner_ckpt, key_path="idm.planner_checkpoint"))
+    return policy_checkpoint_metadata(cfg, checkpoint_key, action_dim, checkpoint_refs=checkpoint_refs or None)
 
 
 def run_epoch(
@@ -151,6 +158,7 @@ def main() -> None:
         modules={"state_encoder": state_encoder, checkpoint_key: idm},
         optimizer=optimizer,
         explicit_resume=args.resume,
+        expected_metadata=checkpoint_model_metadata(cfg, checkpoint_key, action_dim),
     )
     if best_metric == float("-inf"):
         best_metric = float("inf")

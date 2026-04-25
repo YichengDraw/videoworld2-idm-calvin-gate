@@ -10,22 +10,24 @@ from torch.utils.data import DataLoader
 
 from videoworld2.robot_idm.data.collate import robot_idm_collate
 from videoworld2.robot_idm.models.dldm_local_adapter import _resolve_path_from_config_dir
-from videoworld2.robot_idm.utils.checkpoint import find_resume_path, load_checkpoint
-from videoworld2.robot_idm.utils.config import dump_config
+from videoworld2.robot_idm.utils.checkpoint import find_resume_path, load_checkpoint, validate_checkpoint_metadata
+from videoworld2.robot_idm.utils.config import config_path_source_dir, dump_config
 from videoworld2.robot_idm.utils.factory import build_train_val_datasets
 from videoworld2.robot_idm.utils.latent_cache import LatentCodeCache, extract_code_cache
 from videoworld2.robot_idm.utils.mock_data import generate_mock_dataset
 from videoworld2.robot_idm.utils.runtime import ensure_dir, load_json, make_torch_generator, make_worker_init_fn
 
 
-def resolve_config_path(cfg: dict[str, Any], path_value: str) -> Path:
+def resolve_config_path(cfg: dict[str, Any], path_value: str, key_path: str | None = None) -> Path:
     raw_path = str(path_value)
     path = Path(path_value)
     if raw_path.startswith("/") and not path.is_absolute():
         raise ValueError(f"Config path {raw_path} is a POSIX absolute path on this platform; remap it to a local path.")
     if path.is_absolute():
         return path
-    return (Path(cfg["_meta"]["config_path"]).parent / path).resolve()
+    source_dir = config_path_source_dir(cfg, raw_path, key_path=key_path)
+    base_dir = source_dir if source_dir else Path(cfg["_meta"]["config_path"]).parent
+    return (base_dir / path).resolve()
 
 
 def prepare_mock_data_if_needed(cfg: dict[str, Any]) -> None:
@@ -33,12 +35,12 @@ def prepare_mock_data_if_needed(cfg: dict[str, Any]) -> None:
     if data_cfg.get("dataset_type") != "mock":
         return
 
-    train_manifest = resolve_config_path(cfg, data_cfg["train_manifest"])
-    val_manifest = resolve_config_path(cfg, data_cfg["val_manifest"])
+    train_manifest = resolve_config_path(cfg, data_cfg["train_manifest"], key_path="data.train_manifest")
+    val_manifest = resolve_config_path(cfg, data_cfg["val_manifest"], key_path="data.val_manifest")
     if train_manifest.exists() and val_manifest.exists():
         return
 
-    root_dir = resolve_config_path(cfg, data_cfg.get("mock_root", "datasets/mock_robot"))
+    root_dir = resolve_config_path(cfg, data_cfg.get("mock_root", "datasets/mock_robot"), key_path="data.mock_root")
     generate_mock_dataset(
         root=root_dir,
         train_episodes=int(data_cfg.get("mock_train_episodes", 64)),
@@ -63,6 +65,7 @@ def _adapter_cache_metadata(cfg: dict[str, Any], adapter) -> dict[str, Any]:
             stat = resolved.stat()
             metadata["adapter_checkpoint_size"] = int(stat.st_size)
             metadata["adapter_checkpoint_mtime_ns"] = int(stat.st_mtime_ns)
+            metadata["adapter_checkpoint_sha256"] = _file_sha256(resolved)
     return metadata
 
 
@@ -108,8 +111,16 @@ def _file_fingerprint(path_value: str | Path, base_dir: Path | None = None) -> d
     payload: dict[str, Any] = {"path": resolved.as_posix(), "exists": resolved.exists()}
     if resolved.exists() and resolved.is_file():
         stat = resolved.stat()
-        payload.update({"size": int(stat.st_size), "mtime_ns": int(stat.st_mtime_ns)})
+        payload.update({"size": int(stat.st_size), "mtime_ns": int(stat.st_mtime_ns), "sha256": _file_sha256(resolved)})
     return payload
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _manifest_source_fingerprint(manifest_payload: dict[str, Any], manifest_dir: Path) -> list[dict[str, Any]]:
@@ -133,7 +144,7 @@ def _dataset_cache_metadata(cfg: dict[str, Any], dataset, split: str, adapter) -
     spec = getattr(dataset, "spec", None)
     first_window = dataset.index[0] if getattr(dataset, "index", None) else {}
     last_window = dataset.index[-1] if getattr(dataset, "index", None) else {}
-    manifest_path = resolve_config_path(cfg, cfg["data"][f"{split}_manifest"])
+    manifest_path = resolve_config_path(cfg, cfg["data"][f"{split}_manifest"], key_path=f"data.{split}_manifest")
     manifest_payload = load_json(manifest_path)
     adapter_cfg = cfg.get("adapter", {})
     metadata = {
@@ -167,8 +178,8 @@ def _validate_non_empty_dataset(dataset, split: str) -> None:
 def ensure_code_caches(cfg: dict[str, Any], adapter, device: torch.device) -> None:
     prepare_mock_data_if_needed(cfg)
     data_cfg = cfg["data"]
-    train_cache = resolve_config_path(cfg, data_cfg["train_cache"])
-    val_cache = resolve_config_path(cfg, data_cfg["val_cache"])
+    train_cache = resolve_config_path(cfg, data_cfg["train_cache"], key_path="data.train_cache")
+    val_cache = resolve_config_path(cfg, data_cfg["val_cache"], key_path="data.val_cache")
     overwrite_cache = bool(data_cfg.get("overwrite_cache", False))
 
     train_dataset, val_dataset = build_train_val_datasets(cfg, use_latent_cache=False)
@@ -176,13 +187,18 @@ def ensure_code_caches(cfg: dict[str, Any], adapter, device: torch.device) -> No
     _validate_non_empty_dataset(val_dataset, "val")
     train_metadata = _dataset_cache_metadata(cfg, train_dataset, "train", adapter)
     val_metadata = _dataset_cache_metadata(cfg, val_dataset, "val", adapter)
+    train_keys = _dataset_cache_keys(train_dataset)
+    val_keys = _dataset_cache_keys(val_dataset)
+    cfg["_latent_cache_expected"] = {
+        "train": {"metadata": train_metadata, "keys": sorted(train_keys)},
+        "val": {"metadata": val_metadata, "keys": sorted(val_keys)},
+    }
 
     cache_specs = [
-        ("train", train_dataset, train_cache, train_metadata, int(cfg["training"].get("seed", 7))),
-        ("val", val_dataset, val_cache, val_metadata, int(cfg["training"].get("seed", 7)) + 1),
+        ("train", train_dataset, train_cache, train_metadata, train_keys, int(cfg["training"].get("seed", 7))),
+        ("val", val_dataset, val_cache, val_metadata, val_keys, int(cfg["training"].get("seed", 7)) + 1),
     ]
-    for _split, dataset, cache_path, metadata, seed in cache_specs:
-        expected_keys = _dataset_cache_keys(dataset)
+    for _split, dataset, cache_path, metadata, expected_keys, seed in cache_specs:
         if cache_path.exists() and not overwrite_cache:
             LatentCodeCache(
                 cache_path,
@@ -248,7 +264,7 @@ def make_dataloaders(cfg: dict[str, Any], use_latent_cache: bool) -> tuple[DataL
 
 
 def make_output_dir(cfg: dict[str, Any]) -> Path:
-    output_dir = resolve_config_path(cfg, cfg["training"]["output_dir"])
+    output_dir = resolve_config_path(cfg, cfg["training"]["output_dir"], key_path="training.output_dir")
     ensure_dir(output_dir)
     dump_config(cfg, output_dir / "resolved_config.yaml")
     return output_dir
@@ -260,12 +276,15 @@ def maybe_resume_training(
     optimizer: torch.optim.Optimizer | None = None,
     explicit_resume: str | None = None,
     strict: bool = True,
+    expected_metadata: dict[str, Any] | None = None,
 ) -> tuple[int, int, float]:
     resume_path = find_resume_path(output_dir, explicit=explicit_resume)
     if resume_path is None:
         return 0, 0, float("-inf")
 
     state = load_checkpoint(resume_path)
+    if expected_metadata is not None:
+        validate_checkpoint_metadata(state, expected_metadata, resume_path)
     for name, module in modules.items():
         if name in state:
             module.load_state_dict(state[name], strict=strict)
@@ -299,11 +318,16 @@ def sample_code_conditioning(
     gt_embeds = batch["future_code_embeds"]
     source = idm_cfg.get("code_source", "gt")
     require_predicted_codes = source == "predicted"
+    mixed_requires_predicted_codes = (
+        training
+        and bool(idm_cfg.get("mixed_code_training", False))
+        and float(idm_cfg.get("mixed_code_ratio_pred", 0.0)) > 0.0
+    )
     planner_metrics: dict[str, torch.Tensor] = {}
     pred_codes = None
     pred_embeds = None
-    if require_predicted_codes and planner is None:
-        raise ValueError("Predicted-code conditioning requires a planner checkpoint.")
+    if (require_predicted_codes or mixed_requires_predicted_codes) and planner is None:
+        raise ValueError("Predicted-code or mixed-code conditioning requires a planner checkpoint.")
     if planner is not None:
         pred_codes = planner.sample(state_tokens)
         pred_embeds = adapter.code_embed(pred_codes)
