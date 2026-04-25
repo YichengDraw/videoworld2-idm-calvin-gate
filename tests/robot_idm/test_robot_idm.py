@@ -175,6 +175,28 @@ class RobotIDMTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "overlap"):
                 validate_manifest_pair(train_manifest, val_manifest)
 
+    def test_manifest_pair_rejects_duplicate_ids_within_split(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            train_manifest = root / "train_manifest.json"
+            val_manifest = root / "val_manifest.json"
+            save_json(
+                {
+                    "episodes": [
+                        {"episode_id": "dup", "root": "/data/calvin_a", "start": 10, "end": 20},
+                        {"episode_id": "dup", "root": "/data/calvin_b", "start": 30, "end": 40},
+                    ]
+                },
+                train_manifest,
+            )
+            save_json(
+                {"episodes": [{"episode_id": "val_0", "root": "/data/calvin_c", "start": 50, "end": 60}]},
+                val_manifest,
+            )
+
+            with self.assertRaisesRegex(ValueError, "duplicate episode ids"):
+                validate_manifest_pair(train_manifest, val_manifest)
+
     def test_ensure_code_caches_validates_existing_cache_even_if_other_split_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)

@@ -98,7 +98,7 @@ def evaluate_offline(cfg: dict[str, Any], checkpoint_path: str, device: torch.de
     device = device or resolve_device("auto")
     ensure_code_caches(cfg, adapter=DLDMLocalAdapter(cfg["adapter"]).to(device), device=device)
     _, val_loader = make_dataloaders(cfg, use_latent_cache=True)
-    sample_batch = next(iter(val_loader))
+    sample_batch = val_loader.dataset[0]
     cfg["data"]["action_dim"] = int(sample_batch["action_chunk"].size(-1))
     adapter, state_encoder, idm, planner_encoder, planner, verifier = load_policy_bundle(cfg, checkpoint_path, device)
 

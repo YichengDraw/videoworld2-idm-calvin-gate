@@ -40,6 +40,8 @@ def validate_manifest_pair(train_manifest: str | Path, val_manifest: str | Path)
 
     train_entries = load_json(train_path).get("episodes", [])
     val_entries = load_json(val_path).get("episodes", [])
+    _validate_unique_episode_ids(train_entries, "train")
+    _validate_unique_episode_ids(val_entries, "val")
     train_ids = {entry.get("episode_id") for entry in train_entries}
     val_ids = {entry.get("episode_id") for entry in val_entries}
     overlap_ids = sorted(train_ids & val_ids)
@@ -53,6 +55,18 @@ def validate_manifest_pair(train_manifest: str | Path, val_manifest: str | Path)
             for val_start, val_end in val_spans.get(root, []):
                 if start <= val_end and val_start <= end:
                     raise ValueError(f"Train/val manifests overlap on {root}: train={start}-{end}, val={val_start}-{val_end}")
+
+
+def _validate_unique_episode_ids(entries: list[dict[str, Any]], split: str) -> None:
+    seen: set[Any] = set()
+    duplicates: list[Any] = []
+    for entry in entries:
+        episode_id = entry.get("episode_id")
+        if episode_id in seen:
+            duplicates.append(episode_id)
+        seen.add(episode_id)
+    if duplicates:
+        raise ValueError(f"{split} manifest has duplicate episode ids: {duplicates[:5]}")
 
 
 def _normalise_manifest_root(root_value: Any, manifest_dir: Path) -> str:
