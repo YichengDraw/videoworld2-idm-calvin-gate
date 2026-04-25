@@ -54,7 +54,7 @@ def main() -> None:
     ensure_code_caches(cfg, adapter=adapter, device=device)
 
     train_loader, val_loader = make_dataloaders(cfg, use_latent_cache=True)
-    action_dim = next(iter(train_loader))["action_chunk"].size(-1)
+    action_dim = train_loader.dataset[0]["action_chunk"].size(-1)
     state_encoder = build_state_encoder(cfg).to(device)
     verifier = build_verifier(cfg, adapter=adapter, action_dim=action_dim).to(device)
     optimizer = torch.optim.AdamW(

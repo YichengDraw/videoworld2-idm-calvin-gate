@@ -46,8 +46,8 @@ def validate_manifest_pair(train_manifest: str | Path, val_manifest: str | Path)
     if overlap_ids:
         raise ValueError(f"Train/val manifests share episode ids: {overlap_ids[:5]}")
 
-    train_spans = _manifest_spans(train_entries)
-    val_spans = _manifest_spans(val_entries)
+    train_spans = _manifest_spans(train_entries, train_path.parent)
+    val_spans = _manifest_spans(val_entries, val_path.parent)
     for root, train_ranges in train_spans.items():
         for start, end in train_ranges:
             for val_start, val_end in val_spans.get(root, []):
@@ -55,12 +55,22 @@ def validate_manifest_pair(train_manifest: str | Path, val_manifest: str | Path)
                     raise ValueError(f"Train/val manifests overlap on {root}: train={start}-{end}, val={val_start}-{val_end}")
 
 
-def _manifest_spans(entries: list[dict[str, Any]]) -> dict[str, list[tuple[int, int]]]:
+def _normalise_manifest_root(root_value: Any, manifest_dir: Path) -> str:
+    raw_root = str(root_value)
+    root_path = Path(raw_root).expanduser()
+    if raw_root.startswith("/") and not root_path.is_absolute():
+        return root_path.as_posix()
+    if root_path.is_absolute():
+        return root_path.resolve(strict=False).as_posix()
+    return (manifest_dir / root_path).resolve(strict=False).as_posix()
+
+
+def _manifest_spans(entries: list[dict[str, Any]], manifest_dir: Path) -> dict[str, list[tuple[int, int]]]:
     spans: dict[str, list[tuple[int, int]]] = {}
     for entry in entries:
         if "root" not in entry or "start" not in entry or "end" not in entry:
             continue
-        root = str(Path(str(entry["root"])).as_posix())
+        root = _normalise_manifest_root(entry["root"], manifest_dir)
         spans.setdefault(root, []).append((int(entry["start"]), int(entry["end"])))
     return spans
 

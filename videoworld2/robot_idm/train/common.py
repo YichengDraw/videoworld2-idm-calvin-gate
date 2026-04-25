@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +14,7 @@ from videoworld2.robot_idm.utils.config import dump_config
 from videoworld2.robot_idm.utils.factory import build_train_val_datasets
 from videoworld2.robot_idm.utils.latent_cache import LatentCodeCache, extract_code_cache
 from videoworld2.robot_idm.utils.mock_data import generate_mock_dataset
-from videoworld2.robot_idm.utils.runtime import ensure_dir, make_torch_generator, make_worker_init_fn
+from videoworld2.robot_idm.utils.runtime import ensure_dir, load_json, make_torch_generator, make_worker_init_fn
 
 
 def resolve_config_path(cfg: dict[str, Any], path_value: str) -> Path:
@@ -61,14 +63,23 @@ def _adapter_cache_metadata(cfg: dict[str, Any], adapter) -> dict[str, Any]:
     return metadata
 
 
+def _json_digest(payload: Any) -> str:
+    encoded = json.dumps(payload, sort_keys=True, ensure_ascii=True, default=str).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def _dataset_cache_metadata(cfg: dict[str, Any], dataset, split: str, adapter) -> dict[str, Any]:
     spec = getattr(dataset, "spec", None)
     first_window = dataset.index[0] if getattr(dataset, "index", None) else {}
     last_window = dataset.index[-1] if getattr(dataset, "index", None) else {}
+    manifest_path = resolve_config_path(cfg, cfg["data"][f"{split}_manifest"])
+    manifest_payload = load_json(manifest_path)
     metadata = {
         "metadata_version": 2,
         "split": split,
         "dataset_type": cfg["data"].get("dataset_type", "standard"),
+        "manifest_path": str(manifest_path),
+        "manifest_digest": _json_digest(manifest_payload),
         "image_size": cfg["data"].get("image_size"),
         "window_spec": vars(spec) if spec is not None else {},
         "num_windows": len(dataset),
@@ -94,43 +105,33 @@ def ensure_code_caches(cfg: dict[str, Any], adapter, device: torch.device) -> No
     train_dataset, val_dataset = build_train_val_datasets(cfg, use_latent_cache=False)
     train_metadata = _dataset_cache_metadata(cfg, train_dataset, "train", adapter)
     val_metadata = _dataset_cache_metadata(cfg, val_dataset, "val", adapter)
-    if not overwrite_cache and train_cache.exists() and val_cache.exists():
-        LatentCodeCache(
-            train_cache,
-            expected_metadata=train_metadata,
-            expected_keys=_dataset_cache_keys(train_dataset),
-            allow_legacy_metadata=allow_legacy_metadata,
-        )
-        LatentCodeCache(
-            val_cache,
-            expected_metadata=val_metadata,
-            expected_keys=_dataset_cache_keys(val_dataset),
-            allow_legacy_metadata=allow_legacy_metadata,
-        )
-        return
 
-    extract_code_cache(
-        train_dataset,
-        adapter,
-        train_cache,
-        batch_size=int(cfg["training"].get("cache_batch_size", 8)),
-        num_workers=int(cfg["training"].get("num_workers", 0)),
-        device=device,
-        overwrite=overwrite_cache,
-        metadata=train_metadata,
-        seed=int(cfg["training"].get("seed", 7)),
-    )
-    extract_code_cache(
-        val_dataset,
-        adapter,
-        val_cache,
-        batch_size=int(cfg["training"].get("cache_batch_size", 8)),
-        num_workers=int(cfg["training"].get("num_workers", 0)),
-        device=device,
-        overwrite=overwrite_cache,
-        metadata=val_metadata,
-        seed=int(cfg["training"].get("seed", 7)) + 1,
-    )
+    cache_specs = [
+        ("train", train_dataset, train_cache, train_metadata, int(cfg["training"].get("seed", 7))),
+        ("val", val_dataset, val_cache, val_metadata, int(cfg["training"].get("seed", 7)) + 1),
+    ]
+    for _split, dataset, cache_path, metadata, seed in cache_specs:
+        expected_keys = _dataset_cache_keys(dataset)
+        if cache_path.exists() and not overwrite_cache:
+            LatentCodeCache(
+                cache_path,
+                expected_metadata=metadata,
+                expected_keys=expected_keys,
+                allow_legacy_metadata=allow_legacy_metadata,
+            )
+            continue
+
+        extract_code_cache(
+            dataset,
+            adapter,
+            cache_path,
+            batch_size=int(cfg["training"].get("cache_batch_size", 8)),
+            num_workers=int(cfg["training"].get("num_workers", 0)),
+            device=device,
+            overwrite=overwrite_cache,
+            metadata=metadata,
+            seed=seed,
+        )
 
 
 def make_dataloaders(cfg: dict[str, Any], use_latent_cache: bool) -> tuple[DataLoader, DataLoader]:
@@ -185,6 +186,7 @@ def maybe_resume_training(
     modules: dict[str, torch.nn.Module],
     optimizer: torch.optim.Optimizer | None = None,
     explicit_resume: str | None = None,
+    strict: bool = True,
 ) -> tuple[int, int, float]:
     resume_path = find_resume_path(output_dir, explicit=explicit_resume)
     if resume_path is None:
@@ -193,7 +195,7 @@ def maybe_resume_training(
     state = load_checkpoint(resume_path)
     for name, module in modules.items():
         if name in state:
-            module.load_state_dict(state[name], strict=False)
+            module.load_state_dict(state[name], strict=strict)
     if optimizer is not None and "optimizer" in state:
         optimizer.load_state_dict(state["optimizer"])
     return int(state.get("epoch", 0)), int(state.get("global_step", 0)), float(state.get("best_metric", float("-inf")))

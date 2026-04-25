@@ -75,8 +75,8 @@ def load_policy_bundle(cfg: dict[str, Any], checkpoint_path: str, device: torch.
         planner_state = load_checkpoint(planner_checkpoint, map_location=device)
         planner_encoder = build_state_encoder(cfg).to(device)
         planner = build_planner(cfg, adapter).to(device)
-        planner_encoder.load_state_dict(planner_state["state_encoder"], strict=False)
-        planner.load_state_dict(planner_state["planner"], strict=False)
+        planner_encoder.load_state_dict(planner_state["state_encoder"], strict=True)
+        planner.load_state_dict(planner_state["planner"], strict=True)
         planner_encoder.eval()
         planner.eval()
 
@@ -87,7 +87,7 @@ def load_policy_bundle(cfg: dict[str, Any], checkpoint_path: str, device: torch.
             verifier_checkpoint = str((Path(cfg["_meta"]["config_path"]).parent / verifier_checkpoint).resolve())
         verifier_state = load_checkpoint(verifier_checkpoint, map_location=device)
         verifier = build_verifier(cfg, adapter, action_dim=action_dim).to(device)
-        verifier.load_state_dict(verifier_state["verifier"], strict=False)
+        verifier.load_state_dict(verifier_state["verifier"], strict=True)
         verifier.eval()
     return adapter, state_encoder, idm, planner_encoder, planner, verifier
 

@@ -30,7 +30,7 @@ def main() -> None:
     ensure_code_caches(cfg, adapter=adapter, device=device)
 
     train_loader, val_loader = make_dataloaders(cfg, use_latent_cache=True)
-    action_dim = next(iter(train_loader))["action_chunk"].size(-1)
+    action_dim = train_loader.dataset[0]["action_chunk"].size(-1)
     cfg["data"]["action_dim"] = int(action_dim)
 
     teacher_checkpoint = cfg.get("distill", {}).get("teacher_checkpoint")
@@ -44,8 +44,8 @@ def main() -> None:
 
         teacher_encoder = build_state_encoder(cfg).to(device)
         teacher_idm = build_idm(cfg, action_dim=action_dim).to(device)
-        teacher_encoder.load_state_dict(teacher_state["state_encoder"], strict=False)
-        teacher_idm.load_state_dict(teacher_state["idm"], strict=False)
+        teacher_encoder.load_state_dict(teacher_state["state_encoder"], strict=True)
+        teacher_idm.load_state_dict(teacher_state["idm"], strict=True)
         teacher_encoder.eval()
         teacher_idm.eval()
     state_encoder = build_state_encoder(cfg).to(device)

@@ -11,7 +11,7 @@ from videoworld2.robot_idm.data.robot_window_dataset import RobotWindowDataset, 
 from videoworld2.robot_idm.models.forward_verifier import ForwardVerifier
 from videoworld2.robot_idm.models.inverse_dynamics import HistoryAwareIDM
 from videoworld2.robot_idm.models.latent_planner import LatentPlanner
-from videoworld2.robot_idm.train.common import sample_code_conditioning
+from videoworld2.robot_idm.train.common import ensure_code_caches, maybe_resume_training, sample_code_conditioning
 from videoworld2.robot_idm.train.train_idm import build_trainable_policy
 from videoworld2.robot_idm.utils.config import load_config
 from videoworld2.robot_idm.utils.factory import validate_manifest_pair
@@ -156,6 +156,83 @@ class RobotIDMTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "overlap"):
                 validate_manifest_pair(train_manifest, val_manifest)
 
+    def test_manifest_pair_normalises_relative_and_absolute_roots(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            calvin_root = root / "calvin"
+            calvin_root.mkdir()
+            train_manifest = root / "train_manifest.json"
+            val_manifest = root / "val_manifest.json"
+            save_json(
+                {"episodes": [{"episode_id": "train_0", "root": "calvin", "start": 10, "end": 20}]},
+                train_manifest,
+            )
+            save_json(
+                {"episodes": [{"episode_id": "val_0", "root": str(calvin_root), "start": 18, "end": 30}]},
+                val_manifest,
+            )
+
+            with self.assertRaisesRegex(ValueError, "overlap"):
+                validate_manifest_pair(train_manifest, val_manifest)
+
+    def test_ensure_code_caches_validates_existing_cache_even_if_other_split_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            train_episode = root / "train.pt"
+            val_episode = root / "val.pt"
+            _make_episode(train_episode, "train_0")
+            _make_episode(val_episode, "val_0")
+            train_manifest = root / "train_manifest.json"
+            val_manifest = root / "val_manifest.json"
+            save_json({"episodes": [{"path": str(train_episode), "episode_id": "train_0"}]}, train_manifest)
+            save_json({"episodes": [{"path": str(val_episode), "episode_id": "val_0"}]}, val_manifest)
+
+            train_cache = root / "train_codes.pt"
+            val_cache = root / "val_codes.pt"
+            LatentCodeCache.save(
+                [{"episode_id": "train_0", "t": 4, "codes": torch.tensor([1]), "embeds": torch.randn(1, 4)}],
+                train_cache,
+                metadata={"metadata_version": 2, "split": "val"},
+            )
+            cfg = {
+                "_meta": {"config_path": str(root / "exp.yaml")},
+                "adapter": {"backend": "mock_geometry", "vocab_size": 8, "n_codes": 1, "embed_dim": 4},
+                "data": {
+                    "dataset_type": "standard",
+                    "train_manifest": str(train_manifest),
+                    "val_manifest": str(val_manifest),
+                    "train_index": str(root / "train_index.json"),
+                    "val_index": str(root / "val_index.json"),
+                    "train_cache": str(train_cache),
+                    "val_cache": str(val_cache),
+                    "limit_train_windows": 1,
+                    "limit_val_windows": 1,
+                    "image_size": 32,
+                    "action_chunk": 8,
+                    "future_video_horizon": 8,
+                    "history_frames": 4,
+                    "past_action_hist": 4,
+                    "stride": 4,
+                },
+                "training": {"seed": 7, "cache_batch_size": 2, "num_workers": 0},
+            }
+            adapter = mock.Mock(backend="mock_geometry", vocab_size=8, n_codes=1, embed_dim=4)
+
+            with mock.patch("videoworld2.robot_idm.train.common.extract_code_cache") as extract:
+                with self.assertRaisesRegex(ValueError, "metadata mismatch"):
+                    ensure_code_caches(cfg, adapter=adapter, device=torch.device("cpu"))
+                extract.assert_not_called()
+
+    def test_resume_training_rejects_mismatched_module_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            checkpoint_dir = root / "checkpoints"
+            checkpoint_dir.mkdir()
+            torch.save({"model": {"wrong.weight": torch.zeros(1)}}, checkpoint_dir / "last.pt")
+
+            with self.assertRaisesRegex(RuntimeError, "Missing key"):
+                maybe_resume_training(root, modules={"model": torch.nn.Linear(2, 1)})
+
     def test_load_config_preserves_adapter_source_dir(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
@@ -236,6 +313,57 @@ class RobotIDMTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "architecture mismatch"):
                 load_policy_bundle(cfg, str(checkpoint_path), torch.device("cpu"))
+
+    def test_predicted_eval_rejects_incomplete_planner_checkpoint(self) -> None:
+        from videoworld2.robot_idm.eval.eval_offline_idm import load_policy_bundle
+        from videoworld2.robot_idm.utils.factory import build_direct_policy, build_state_encoder
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            cfg = {
+                "_meta": {"config_path": str(root / "exp.yaml")},
+                "adapter": {"backend": "mock_geometry", "embed_dim": 64},
+                "data": {
+                    "action_dim": 2,
+                    "action_chunk": 8,
+                    "proprio_dim": 4,
+                    "use_proprio": True,
+                    "use_lang": True,
+                },
+                "model": {
+                    "image_backbone": "small_cnn",
+                    "d_model": 64,
+                    "temporal_depth": 2,
+                    "idm_depth": 2,
+                    "planner_depth": 2,
+                    "n_heads": 4,
+                    "num_embodiments": 8,
+                },
+                "idm": {
+                    "variant": "bc",
+                    "code_source": "predicted",
+                    "planner_checkpoint": str(root / "planner.pt"),
+                    "use_future_codes": True,
+                    "use_past_actions": True,
+                },
+                "policy": {},
+                "evaluation": {},
+            }
+            state_encoder = build_state_encoder(cfg)
+            direct_policy = build_direct_policy(cfg, action_dim=2)
+            policy_checkpoint = root / "policy.pt"
+            torch.save(
+                {
+                    "state_encoder": state_encoder.state_dict(),
+                    "direct_policy": direct_policy.state_dict(),
+                    "model_metadata": {"checkpoint_key": "direct_policy", "policy_variant": ""},
+                },
+                policy_checkpoint,
+            )
+            torch.save({"state_encoder": state_encoder.state_dict(), "planner": {}}, root / "planner.pt")
+
+            with self.assertRaisesRegex(RuntimeError, "Missing key"):
+                load_policy_bundle(cfg, str(policy_checkpoint), torch.device("cpu"))
 
 
 if __name__ == "__main__":

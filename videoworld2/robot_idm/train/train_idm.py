@@ -30,8 +30,8 @@ def load_planner_bundle(cfg, adapter, device: torch.device):
     checkpoint = load_checkpoint(planner_ckpt, map_location=device)
     planner_encoder = build_state_encoder(cfg).to(device)
     planner = build_planner(cfg, adapter).to(device)
-    planner_encoder.load_state_dict(checkpoint["state_encoder"], strict=False)
-    planner.load_state_dict(checkpoint["planner"], strict=False)
+    planner_encoder.load_state_dict(checkpoint["state_encoder"], strict=True)
+    planner.load_state_dict(checkpoint["planner"], strict=True)
     planner_encoder.eval()
     planner.eval()
     return planner_encoder, planner
