@@ -4,6 +4,7 @@ import argparse
 import csv
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -43,18 +44,31 @@ def load_json(path: Path) -> dict[str, Any]:
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False, allow_nan=False) + "\n", encoding="utf-8")
+
+
+def _audit_source_hashes(audit_path: Path) -> dict[str, str]:
+    audit = load_json(audit_path)
+    source_files = audit.get("source_files", [])
+    return {str(record["path"]): str(record["sha256"]) for record in source_files}
 
 
 def _audit_hashes(audit_path: Path) -> dict[str, str]:
-    audit = load_json(audit_path)
-    source_files = audit.get("source_files", [])
-    hashes: dict[str, str] = {}
-    for record in source_files:
-        path = str(record.get("path", ""))
-        if path.endswith("/offline_eval.json"):
-            hashes[path.removeprefix("models/")] = str(record["sha256"])
-    return hashes
+    return {
+        path.removeprefix("models/"): digest
+        for path, digest in _audit_source_hashes(audit_path).items()
+        if path.endswith("/offline_eval.json")
+    }
+
+
+def validate_audited_source_files(rescue_root: Path, audit_path: Path) -> None:
+    for rel_path, expected_hash in _audit_source_hashes(audit_path).items():
+        source = rescue_root / rel_path
+        if not source.exists():
+            raise FileNotFoundError(f"Missing audited rescue source file: {source}")
+        actual_hash = _file_sha256(source)
+        if actual_hash != expected_hash:
+            raise ValueError(f"Audited rescue source hash mismatch for {rel_path}: sha256={actual_hash}, expected={expected_hash}")
 
 
 def load_rescued_offline_metrics(models_dir: Path, audit_json: Path | None = None) -> dict[str, Any]:
@@ -89,12 +103,20 @@ def package_metrics(metrics: dict[str, Any], metadata: dict[str, Any], metric_or
     for controller, values in metrics.items():
         if controller not in metadata:
             raise ValueError(f"Missing controller metadata for {controller}")
-        row = {key: float(values[key]) for key in NUMERIC_METRIC_KEYS}
+        row = {}
+        for key in NUMERIC_METRIC_KEYS:
+            value = float(values[key])
+            if not math.isfinite(value):
+                raise ValueError(f"Non-finite metric for {controller}.{key}: {value}")
+            row[key] = value
         row.update(metadata[controller])
         if _planner_accuracy_applies(row):
             if values.get("planner_code_accuracy") is None:
                 raise ValueError(f"Missing planner_code_accuracy for predicted-code controller {controller}")
-            row["planner_code_accuracy"] = float(values["planner_code_accuracy"])
+            planner_accuracy = float(values["planner_code_accuracy"])
+            if not math.isfinite(planner_accuracy):
+                raise ValueError(f"Non-finite planner_code_accuracy for {controller}: {planner_accuracy}")
+            row["planner_code_accuracy"] = planner_accuracy
         else:
             row["planner_code_accuracy"] = None
         row["result_role"] = "privileged_upper_bound" if row["privileged_future_codes"] else "deployable_policy"
@@ -127,7 +149,12 @@ def write_csv(path: Path, metrics: dict[str, Any]) -> None:
             writer.writerow(row)
 
 
-def provenance() -> dict[str, Any]:
+def provenance(audited_rescue_hashes: bool) -> dict[str, Any]:
+    hash_binding = (
+        "rescued manifest, window, latent-cache, controller config, metrics-log, checkpoint, and offline_eval source files were checked against results/rescued_artifact_audit.json SHA256 hashes"
+        if audited_rescue_hashes
+        else "rescued source files were not checked against audit hashes; diagnostic packaging only"
+    )
     return {
         "not_a_real_calvin_closed_loop_verdict": True,
         "fresh_local_regeneration_blocked": True,
@@ -138,6 +165,8 @@ def provenance() -> dict[str, Any]:
                 "results/phase1_offline_metrics.csv",
             ],
             "artifact_audit_file": "results/rescued_artifact_audit.json",
+            "audited_rescue_hashes": audited_rescue_hashes,
+            "rescue_hash_binding": hash_binding,
             "status": "committed offline_eval.json values recovered from the rescued Phase 1 run",
             "single_file_safety": "metrics JSON/CSV duplicate privileged_future_codes, deployable_without_future_labels, conditioning, result_role, real_calvin_closed_loop, fresh_local_regeneration_blocked, and metric_origin flags",
             "planner_code_accuracy": "null/blank means no predicted-code planner was evaluated for that controller",
@@ -166,17 +195,19 @@ def main() -> None:
     parser.add_argument("--output-json", type=Path, default=Path("results/phase1_offline_metrics.json"))
     parser.add_argument("--output-csv", type=Path, default=Path("results/phase1_offline_metrics.csv"))
     parser.add_argument("--provenance-json", type=Path, default=Path("results/phase1_result_provenance.json"))
-    parser.add_argument("--audit-json", type=Path, default=Path("results/rescued_artifact_audit.json"), help="Audit JSON containing SHA256 hashes for the intended rescued offline_eval.json files.")
-    parser.add_argument("--allow-unaudited-rescue", action="store_true", help="Package from a rescue directory without checking offline_eval.json hashes.")
+    parser.add_argument("--audit-json", type=Path, default=Path("results/rescued_artifact_audit.json"), help="Audit JSON containing SHA256 hashes for rescued manifests, windows, caches, controller artifacts, and offline_eval files.")
+    parser.add_argument("--allow-unaudited-rescue", action="store_true", help="Package from a rescue directory without checking audited rescue source hashes.")
     args = parser.parse_args()
 
-    metric_origin = "rescued_offline_eval_json"
     audit_json = None if args.allow_unaudited_rescue else args.audit_json
+    metric_origin = "rescued_offline_eval_json" if audit_json is not None else "unaudited_rescued_offline_eval_json"
+    if audit_json is not None:
+        validate_audited_source_files(args.rescued_models_dir.parent, audit_json)
     metrics = load_rescued_offline_metrics(args.rescued_models_dir, audit_json=audit_json)
     packaged = package_metrics(metrics, load_json(args.controller_metadata), metric_origin)
     write_json(args.output_json, packaged)
     write_csv(args.output_csv, packaged)
-    write_json(args.provenance_json, provenance())
+    write_json(args.provenance_json, provenance(audited_rescue_hashes=audit_json is not None))
 
 
 if __name__ == "__main__":

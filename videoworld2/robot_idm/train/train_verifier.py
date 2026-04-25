@@ -18,7 +18,7 @@ from videoworld2.robot_idm.utils.runtime import configure_determinism, resolve_d
 def run_epoch(data_loader, state_encoder, verifier, optimizer, device: torch.device, training: bool) -> dict[str, float]:
     state_encoder.train(training)
     verifier.train(training)
-    totals = {"verifier_ce": 0.0, "planner_code_accuracy": 0.0}
+    totals = {"verifier_ce": 0.0, "verifier_code_accuracy": 0.0}
     count = 0
     for batch in data_loader:
         batch = to_device(batch, device)
@@ -35,9 +35,11 @@ def run_epoch(data_loader, state_encoder, verifier, optimizer, device: torch.dev
 
         batch_size = batch["future_codes"].size(0)
         totals["verifier_ce"] += float(loss.detach().cpu()) * batch_size
-        totals["planner_code_accuracy"] += float(accuracy.detach().cpu()) * batch_size
+        totals["verifier_code_accuracy"] += float(accuracy.detach().cpu()) * batch_size
         count += batch_size
-    return {key: value / max(count, 1) for key, value in totals.items()}
+    if count == 0:
+        raise ValueError("Verifier training/evaluation epoch produced no samples.")
+    return {key: value / count for key, value in totals.items()}
 
 
 def main() -> None:
@@ -77,7 +79,7 @@ def main() -> None:
     for epoch in range(start_epoch, max_epochs):
         train_metrics = run_epoch(train_loader, state_encoder, verifier, optimizer, device, training=True)
         val_metrics = run_epoch(val_loader, state_encoder, verifier, optimizer, device, training=False)
-        metric = val_metrics["planner_code_accuracy"]
+        metric = val_metrics["verifier_code_accuracy"]
         is_best = metric > best_metric
         best_metric = max(best_metric, metric)
         logger.log(global_step + epoch + 1, {f"train/{k}": v for k, v in train_metrics.items()} | {f"val/{k}": v for k, v in val_metrics.items()})

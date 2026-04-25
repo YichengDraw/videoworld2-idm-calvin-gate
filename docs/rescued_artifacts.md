@@ -5,7 +5,7 @@ The original remote 4090 run produced checkpoints, latent caches, manifests, and
 These artifacts are intentionally **not committed** to this repository because they are large run outputs rather than source code.
 
 The committed files in `results/` are the public, lightweight interpreted summaries. This inventory is historical artifact provenance for the non-versioned bundle, not the current source of truth for the README tables.
-The current interpretation boundary is recorded in `results/phase1_result_provenance.json`, with a reproducible rescued-bundle audit in `results/rescued_artifact_audit.json`.
+The current interpretation boundary is recorded in `results/phase1_result_provenance.json`, with a reproducible rescued-bundle audit in `results/rescued_artifact_audit.json`. That audit hashes the public metric sources and the controller semantics inputs: manifests, window indexes, latent caches, `resolved_config.yaml`, `metrics.jsonl`, `offline_eval.json`, and `checkpoints/best.pt` for each recovered controller.
 
 ## Recovered groups
 
@@ -39,8 +39,9 @@ The current interpretation boundary is recorded in `results/phase1_result_proven
 - The rescued CALVIN manifests referenced remote dataset roots during the original run.
 - The rescued files preserved the completed offline metrics, but they do not by themselves complete the later real closed-loop CALVIN adjudication request.
 - The latent caches do not contain raw CALVIN RGB, proprio, or action arrays. Local offline re-evaluation still needs those raw frame files or an equivalent remapped dataset root.
-- The rescued window payloads match the current window-generation logic, but the rescued window files predate the current strict metadata guard and must be rebuilt before strict local reuse. The rescued validation latent cache covers the configured `limit_val_windows: 1024` subset used by the recovered offline evaluations, not the full 12,881-window validation index.
+- The rescued window payloads match the current window-generation logic, and the committed audit checks the latent-cache `(episode_id, t)` keys against the current train-window builder and the configured validation-window prefix. The rescued window/cache files still predate the current strict metadata guard and must be rebuilt before strict local reuse. The rescued validation latent cache covers the configured `limit_val_windows: 1024` subset used by the recovered offline evaluations, not the full 12,881-window validation index.
 - The rescued CALVIN manifests contain same-root within-split span overlaps. The committed audit records 20 train overlap pairs and 8,383 validation overlap pairs; these are treated as CALVIN annotation-window weighting, not as independent raw-frame evidence.
+- The rescued CALVIN manifests reference remote Linux roots, and raw frames are absent locally. The committed manifest validation proves IDs, path/span disjointness where observable, and current window/index consistency; it does not prove byte-level raw-frame content separation for those remote roots.
 - `planner_code_accuracy` is not applicable for the committed Phase 1 rows because none of them publishes a predicted-code planner branch.
 - The Phase 1 action losses are raw-vector losses over the stored CALVIN action representation because no standalone action normalizer was recovered. Offline jerk is computed over the full predicted action chunk, not an executed closed-loop action stream.
 - The locally observed `ldm_tokenizer_training_init_weights.pt` file is not accepted by the current official-tokenizer guard for fresh cache extraction because it misses encode-path parameters. A fresh official-tokenizer rerun needs a complete tokenizer checkpoint or an explicitly diagnostic partial-checkpoint override.

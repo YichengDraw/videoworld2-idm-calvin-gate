@@ -78,6 +78,10 @@ def adapter_checkpoint_metadata(cfg: dict[str, Any]) -> dict[str, Any]:
         "embed_dim": int(adapter_cfg.get("embed_dim", 0)),
         "vocab_size": int(adapter_cfg.get("vocab_size", 0)),
         "n_codes": int(adapter_cfg.get("n_codes", 0)),
+        "init_seed": int(adapter_cfg.get("init_seed", 0)),
+        "hidden_dim": int(adapter_cfg.get("hidden_dim", 0)),
+        "official_kwargs": adapter_cfg.get("official_kwargs", {}),
+        "allow_partial_checkpoint": bool(adapter_cfg.get("allow_partial_checkpoint", False)),
     }
     checkpoint_path = adapter_cfg.get("checkpoint_path")
     if checkpoint_path:

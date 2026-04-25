@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import random
 from contextlib import contextmanager, nullcontext
@@ -53,11 +54,27 @@ def ensure_dir(path: str | Path) -> Path:
     return directory
 
 
+def _validate_json_finite(value: Any, path: str = "root") -> None:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            _validate_json_finite(child, f"{path}.{key}")
+        return
+    if isinstance(value, (list, tuple)):
+        for index, child in enumerate(value):
+            _validate_json_finite(child, f"{path}[{index}]")
+        return
+    if isinstance(value, bool) or value is None:
+        return
+    if isinstance(value, (int, float, np.integer, np.floating)) and not math.isfinite(float(value)):
+        raise ValueError(f"Refusing to write non-finite JSON number at {path}: {value}")
+
+
 def save_json(data: dict[str, Any], path: str | Path) -> None:
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
+    _validate_json_finite(data)
     with destination.open("w", encoding="utf-8") as handle:
-        json.dump(data, handle, indent=2, ensure_ascii=False)
+        json.dump(data, handle, indent=2, ensure_ascii=False, allow_nan=False)
 
 
 def load_json(path: str | Path) -> dict[str, Any]:

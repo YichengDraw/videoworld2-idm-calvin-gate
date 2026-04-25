@@ -127,7 +127,9 @@ def run_epoch(
             planner_code_accuracy_count += batch_size
         count += batch_size
 
-    metrics = {key: value / max(count, 1) for key, value in totals.items()}
+    if count == 0:
+        raise ValueError("IDM training/evaluation epoch produced no samples.")
+    metrics = {key: value / count for key, value in totals.items()}
     if planner_code_accuracy_count:
         metrics["planner_code_accuracy"] = planner_code_accuracy_total / planner_code_accuracy_count
     return metrics

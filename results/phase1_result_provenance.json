@@ -8,6 +8,8 @@
       "results/phase1_offline_metrics.csv"
     ],
     "artifact_audit_file": "results/rescued_artifact_audit.json",
+    "audited_rescue_hashes": true,
+    "rescue_hash_binding": "rescued manifest, window, latent-cache, controller config, metrics-log, checkpoint, and offline_eval source files were checked against results/rescued_artifact_audit.json SHA256 hashes",
     "status": "committed offline_eval.json values recovered from the rescued Phase 1 run",
     "single_file_safety": "metrics JSON/CSV duplicate privileged_future_codes, deployable_without_future_labels, conditioning, result_role, real_calvin_closed_loop, fresh_local_regeneration_blocked, and metric_origin flags",
     "planner_code_accuracy": "null/blank means no predicted-code planner was evaluated for that controller",

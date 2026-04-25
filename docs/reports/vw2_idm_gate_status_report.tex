@@ -25,12 +25,13 @@ The current repository supports an offline CALVIN gate and a mock-only closed-lo
   \item DataLoader workers and generators are seeded from the experiment seed, and evaluation entrypoints request deterministic CUDA behavior by default.
   \item Direct-policy, MLP, planner, verifier, teacher, resume, and CLI checkpoints are validated against explicit architecture, IDM conditioning metadata, planner/teacher checkpoint identity, and path guards before loading; distillation now preserves predicted-code teacher conditioning.
   \item Verifier-assisted evaluation reloads the verifier's paired state encoder instead of feeding a verifier trained on one encoder with tokens from another encoder.
+  \item Evaluation and diagnostic JSON writers reject non-finite metrics before publication, and verifier reranking applies the jerk penalty per candidate instead of using a batch-global scalar.
   \item Cross-directory config inheritance preserves the directory that defined each relative path, and repeated relative path strings are resolved by config key path to avoid source-directory collisions.
 \end{itemize}
 
 \section*{Phase 1 Offline CALVIN Metrics}
 
-The table below is regenerated from the \texttt{offline\_eval.json} files in the non-versioned rescued Phase 1 bundle. It is an annotation-window-weighted result over the configured 1,024-record validation latent-cache subset, not a full 12,881-window validation replay. It is not a fresh local regeneration under the current stricter cache/tokenizer guards because raw CALVIN frame/action files and a complete official tokenizer checkpoint are not available in this checkout. Action NLL and action MSE are raw-vector losses over the stored CALVIN action representation; no standalone action normalizer was recovered. Offline jerk is computed on the full predicted action chunk, not on a real closed-loop executed action stream.
+The table below is regenerated from the \texttt{offline\_eval.json} files in the non-versioned rescued Phase 1 bundle. The committed audit binds the rescued manifests, window indexes, latent caches, controller resolved configs, metrics logs, best checkpoints, and \texttt{offline\_eval.json} outputs by SHA256 before packaging. It is an annotation-window-weighted result over the configured 1,024-record validation latent-cache subset, not a full 12,881-window validation replay. It is not a fresh local regeneration under the current stricter cache/tokenizer guards because raw CALVIN frame/action files and a complete official tokenizer checkpoint are not available in this checkout. Action NLL and action MSE are raw-vector losses over the stored CALVIN action representation; no standalone action normalizer was recovered. Offline jerk is computed on the full predicted action chunk, not on a real closed-loop executed action stream.
 
 \begin{center}
 \begingroup
@@ -78,7 +79,7 @@ The non-versioned rescue bundle contains manifests, window indexes, latent cache
 
 The locally observed \texttt{ldm\_tokenizer\_training\_init\_weights.pt} file is not accepted as a verified official tokenizer for fresh cache extraction because it does not cover all encode-path parameters. Fresh official-cache extraction requires a complete tokenizer checkpoint, or an explicitly diagnostic partial-checkpoint override.
 
-The committed \texttt{results/rescued\_artifact\_audit.json} records that rescued train and validation window payloads match the current window builder: 2,102 train windows and 12,881 validation windows. It also records same-root within-split CALVIN span overlaps, which are interpreted as annotation-window weighting rather than independent raw-frame evidence.
+The committed \texttt{results/rescued\_artifact\_audit.json} records that rescued train and validation window payloads match the current window builder: 2,102 train windows and 12,881 validation windows. It checks latent-cache \texttt{(episode\_id, t)} keys against the current train-window builder and the configured validation-window prefix. It also records same-root within-split CALVIN span overlaps, which are interpreted as annotation-window weighting rather than independent raw-frame evidence. Because the rescued manifests reference remote Linux roots and raw frames are absent locally, this audit does not prove byte-level raw-frame content separation for those remote roots.
 
 \section*{Public Files}
 

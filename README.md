@@ -162,11 +162,11 @@ The JSON and CSV metrics files duplicate the privilege/deployability flags so a 
 Regenerate the committed Phase 1 values, table schema, and provenance flags from a restored rescue bundle with:
 
 ```bash
-python scripts/package_phase1_results.py --rescued-models-dir path/to/vw2_rescue_20260411/models
 python scripts/audit_rescued_artifacts.py --rescue-root path/to/vw2_rescue_20260411
+python scripts/package_phase1_results.py --rescued-models-dir path/to/vw2_rescue_20260411/models
 ```
 
-`package_phase1_results.py` checks the rescued `offline_eval.json` SHA256 hashes against [`results/rescued_artifact_audit.json`](results/rescued_artifact_audit.json) by default; use `--allow-unaudited-rescue` only for diagnostic, non-public packaging.
+`package_phase1_results.py` checks the audited rescued source-file SHA256 hashes against [`results/rescued_artifact_audit.json`](results/rescued_artifact_audit.json) by default, including manifests, window indexes, latent caches, controller configs, metrics logs, checkpoints, and `offline_eval.json` outputs. Use `--allow-unaudited-rescue` only for diagnostic, non-public packaging.
 
 ### Current decision status
 

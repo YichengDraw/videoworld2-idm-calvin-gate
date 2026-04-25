@@ -98,6 +98,8 @@ def summarize_metric_history(output_dir: str | Path) -> dict[str, float]:
         "val/action_nll",
         "train/planner_code_accuracy",
         "val/planner_code_accuracy",
+        "train/verifier_code_accuracy",
+        "val/verifier_code_accuracy",
     ]
     for key in keys:
         values = [float(record[key]) for record in records if key in record]

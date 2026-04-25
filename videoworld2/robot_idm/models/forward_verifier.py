@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 from torch import nn
 
-from videoworld2.robot_idm.utils.metrics import jerk_metric
+from videoworld2.robot_idm.utils.metrics import sequence_jerk
 
 
 class ForwardVerifier(nn.Module):
@@ -60,7 +60,7 @@ class ForwardVerifier(nn.Module):
             repeated_codes.reshape(-1),
             reduction="none",
         ).reshape(batch * num_candidates, -1).mean(dim=1)
-        jerk = jerk_metric(flattened_actions).expand_as(ce)
+        jerk = sequence_jerk(flattened_actions)
         l2 = flattened_actions.square().mean(dim=(1, 2))
         score = -(ce + alpha * jerk + beta * l2)
         score = score.reshape(batch, num_candidates)

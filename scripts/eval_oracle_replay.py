@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from videoworld2.robot_idm.data.robot_window_dataset import _normalise_manifest_path, load_episode
 from videoworld2.robot_idm.train.common import prepare_mock_data_if_needed, resolve_config_path
 from videoworld2.robot_idm.utils.config import load_config
-from videoworld2.robot_idm.utils.metrics import rollout_success
+from videoworld2.robot_idm.utils.metrics import ensure_finite_metrics, rollout_success
 from videoworld2.robot_idm.utils.runtime import load_json, save_json
 
 
@@ -25,6 +25,8 @@ def evaluate_oracle_replay(cfg: dict, split: str, max_episodes: int | None = Non
     episode_entries = manifest["episodes"]
     if max_episodes is not None:
         episode_entries = episode_entries[:max_episodes]
+    if not episode_entries:
+        raise ValueError("Oracle replay requires at least one episode.")
 
     results = []
     for entry in episode_entries:
@@ -51,17 +53,17 @@ def evaluate_oracle_replay(cfg: dict, split: str, max_episodes: int | None = Non
             }
         )
 
-    success_rate = sum(item["success"] for item in results) / max(len(results), 1)
-    mean_final_distance = sum(item["final_distance"] for item in results) / max(len(results), 1)
-    mean_num_actions = sum(item["num_actions"] for item in results) / max(len(results), 1)
-    return {
+    success_rate = sum(item["success"] for item in results) / len(results)
+    mean_final_distance = sum(item["final_distance"] for item in results) / len(results)
+    mean_num_actions = sum(item["num_actions"] for item in results) / len(results)
+    return ensure_finite_metrics({
         "split": split,
         "episodes": len(results),
         "rollout_success": success_rate,
         "mean_final_distance": mean_final_distance,
         "mean_num_actions": mean_num_actions,
         "details": results,
-    }
+    }, context="oracle replay")
 
 
 def main() -> None:

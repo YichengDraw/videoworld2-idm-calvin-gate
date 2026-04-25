@@ -1,6 +1,7 @@
 {
   "source_bundle": "vw2_rescue_20260411",
-  "manifest_pair_validation": "passed",
+  "manifest_pair_validation": "passed_for_ids_paths_and_cross_split_spans",
+  "manifest_content_hash_boundary": "rescued manifests reference remote Linux roots and raw CALVIN frames are absent, so byte-level frame-content split validation cannot be proven from this checkout",
   "window_spec": {
     "history_frames": 4,
     "past_action_hist": 4,
@@ -29,6 +30,10 @@
     "val_records": 1024,
     "configured_limit_train_windows": 8192,
     "configured_limit_val_windows": 1024,
+    "train_cache_has_duplicate_keys": false,
+    "val_cache_has_duplicate_keys": false,
+    "train_cache_keys_match_current_window_builder": true,
+    "val_cache_keys_match_configured_window_prefix": true,
     "val_cache_is_configured_subset_of_full_val_index": true
   },
   "interpretation_boundary": "The recovered offline metrics are annotation-window-weighted values over the configured latent-cache subset. Same-root within-split span overlaps are treated as CALVIN language-annotation windows, not independent raw-frame claims.",
@@ -64,9 +69,34 @@
       "sha256": "fcef8f5302bc0201e1ce006cc362d765d5aaad6826303db069b7991f7cdc5b7d"
     },
     {
+      "path": "models/bc_vis_calvin_4090/resolved_config.yaml",
+      "size": 2538,
+      "sha256": "37a25842e0d932ef013281ba823ae6840283799d6393710d03c9749f96294b4b"
+    },
+    {
+      "path": "models/bc_vis_calvin_4090/metrics.jsonl",
+      "size": 957,
+      "sha256": "c12ae24d5f3d20e8fecaa1a4c46aa363a50530369e8d61adbaeb998ca0487164"
+    },
+    {
       "path": "models/bc_vis_calvin_4090/offline_eval.json",
       "size": 140,
       "sha256": "16c490800a365cf684e2082ef6545c9175052a5d7def39b184672f677f1cf150"
+    },
+    {
+      "path": "models/bc_vis_calvin_4090/checkpoints/best.pt",
+      "size": 711093016,
+      "sha256": "d4ead5deb1ac448dbb9b0dcff3feb6579e1690cf7169253de6b43ee05152a550"
+    },
+    {
+      "path": "models/bc_vis_proprio_calvin_4090/resolved_config.yaml",
+      "size": 2561,
+      "sha256": "8ca80ff5eeafb47ca6032704d02998afab135b8411c3fcdec179b2cf8691d824"
+    },
+    {
+      "path": "models/bc_vis_proprio_calvin_4090/metrics.jsonl",
+      "size": 955,
+      "sha256": "96d327ed47062a5a6fb1bd6010700c1b532260ca31df5badcdacf77043133a73"
     },
     {
       "path": "models/bc_vis_proprio_calvin_4090/offline_eval.json",
@@ -74,9 +104,39 @@
       "sha256": "eba9208193f18aa0d96d30e30c6abea9f0334a01ff6e0f1f02a25d93d6d6341a"
     },
     {
+      "path": "models/bc_vis_proprio_calvin_4090/checkpoints/best.pt",
+      "size": 711291568,
+      "sha256": "5b649472530408d7cc177ab2fafca5068a144d4dbf1e3cec4942aa28e0e525ae"
+    },
+    {
+      "path": "models/history_gt_calvin_4090/resolved_config.yaml",
+      "size": 2553,
+      "sha256": "54b0167333c02fae40c67b7609e12e1c96561fd61fb7559b60eed00bfc67140e"
+    },
+    {
+      "path": "models/history_gt_calvin_4090/metrics.jsonl",
+      "size": 952,
+      "sha256": "e1b62b11612fbee48bd67c2aef10a0856ca5a702ef7e4a71f46cd628f54d5ebc"
+    },
+    {
       "path": "models/history_gt_calvin_4090/offline_eval.json",
       "size": 140,
       "sha256": "cae3b374bce7082b5615c92730a03fa918d4940455324df38e8af2743076f248"
+    },
+    {
+      "path": "models/history_gt_calvin_4090/checkpoints/best.pt",
+      "size": 711358482,
+      "sha256": "b22c12b5c5c5c1f7d731e49de008e3f48959f81c88f5429cd4b75697105784a8"
+    },
+    {
+      "path": "models/pair_idm_calvin_4090/resolved_config.yaml",
+      "size": 2544,
+      "sha256": "49f69205b3586d2ce0b7e1f28322b7a0aca571b354d38b00fa96f30dfecec55d"
+    },
+    {
+      "path": "models/pair_idm_calvin_4090/metrics.jsonl",
+      "size": 956,
+      "sha256": "a9422d4c6c752a30660b7bc7f46da0c6e5d7b8d4949bc87ca33324161794123d"
     },
     {
       "path": "models/pair_idm_calvin_4090/offline_eval.json",
@@ -84,9 +144,29 @@
       "sha256": "fe074bd22155d8fa3410e67e303a047452ddecf7d4cc69461eb418f6b0c8799f"
     },
     {
+      "path": "models/pair_idm_calvin_4090/checkpoints/best.pt",
+      "size": 711291568,
+      "sha256": "c6cde36ef20171abc295409dbaf94d26e13da98a16bef237d4242de91fdb50cd"
+    },
+    {
+      "path": "models/vw2_hidden_mlp_action_head_calvin_4090/resolved_config.yaml",
+      "size": 2761,
+      "sha256": "868377eb745770da8dc46be3c7ca7109ab55f01c279aecdbc6587ac8fae64bee"
+    },
+    {
+      "path": "models/vw2_hidden_mlp_action_head_calvin_4090/metrics.jsonl",
+      "size": 691,
+      "sha256": "d46a66cbe7a832525dabf67c293673eb9399529bce73acee8e54a781f422d811"
+    },
+    {
       "path": "models/vw2_hidden_mlp_action_head_calvin_4090/offline_eval.json",
       "size": 143,
       "sha256": "a9bc4c459976047a8b188501e531a5c89c63f836b4a3b291437349ee390e4375"
+    },
+    {
+      "path": "models/vw2_hidden_mlp_action_head_calvin_4090/checkpoints/best.pt",
+      "size": 324263030,
+      "sha256": "cfbdc2e477357e2648a8d0bb9ed6006cb7ef53047224ffb0801d338f75326da0"
     }
   ]
 }

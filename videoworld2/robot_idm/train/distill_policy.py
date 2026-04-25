@@ -156,7 +156,9 @@ def main() -> None:
             totals["action_nll"] += float(nll.detach().cpu()) * batch_size
             totals["action_mse"] += float(mse.detach().cpu()) * batch_size
             count += batch_size
-        return {key: value / max(count, 1) for key, value in totals.items()}
+        if count == 0:
+            raise ValueError("Distillation epoch produced no samples.")
+        return {key: value / count for key, value in totals.items()}
 
     max_epochs = int(cfg["training"].get("max_epochs", 3))
     for epoch in range(start_epoch, max_epochs):

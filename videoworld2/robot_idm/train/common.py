@@ -285,10 +285,14 @@ def maybe_resume_training(
     state = load_checkpoint(resume_path)
     if expected_metadata is not None:
         validate_checkpoint_metadata(state, expected_metadata, resume_path)
+    missing_modules = sorted(name for name in modules if name not in state)
+    if missing_modules:
+        raise ValueError(f"Resume checkpoint missing module states: {missing_modules[:5]}")
     for name, module in modules.items():
-        if name in state:
-            module.load_state_dict(state[name], strict=strict)
-    if optimizer is not None and "optimizer" in state:
+        module.load_state_dict(state[name], strict=strict)
+    if optimizer is not None:
+        if "optimizer" not in state:
+            raise ValueError(f"Resume checkpoint missing optimizer state: {resume_path}")
         optimizer.load_state_dict(state["optimizer"])
     return int(state.get("epoch", 0)), int(state.get("global_step", 0)), float(state.get("best_metric", float("-inf")))
 

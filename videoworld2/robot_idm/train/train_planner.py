@@ -53,7 +53,9 @@ def run_epoch(
         totals["planner_code_accuracy"] += float(accuracy.detach().cpu()) * batch_size
         count += batch_size
 
-    return {key: value / max(count, 1) for key, value in totals.items()}
+    if count == 0:
+        raise ValueError("Planner training/evaluation epoch produced no samples.")
+    return {key: value / count for key, value in totals.items()}
 
 
 def main() -> None:

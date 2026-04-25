@@ -10,7 +10,7 @@ from videoworld2.robot_idm.models.dldm_local_adapter import DLDMLocalAdapter
 from videoworld2.robot_idm.train.common import ensure_code_caches
 from videoworld2.robot_idm.utils.config import load_config
 from videoworld2.robot_idm.utils.factory import build_train_val_datasets, build_window_spec
-from videoworld2.robot_idm.utils.metrics import jerk_metric, rollout_success
+from videoworld2.robot_idm.utils.metrics import ensure_finite_metrics, jerk_metric, rollout_success
 from videoworld2.robot_idm.utils.mock_data import oracle_action, render_mock_frame
 from videoworld2.robot_idm.utils.runtime import configure_determinism, resolve_device, save_json
 
@@ -50,6 +50,12 @@ def evaluate_closed_loop(cfg: dict[str, Any], checkpoint_path: str, device: torc
     max_rollouts = int(cfg.get("evaluation", {}).get("num_rollouts", 8))
     execute_per_replan = int(cfg.get("evaluation", {}).get("execute_per_replan", cfg["data"].get("action_chunk", 8) // 2))
     horizon = int(cfg.get("evaluation", {}).get("rollout_horizon", 16))
+    if max_rollouts <= 0:
+        raise ValueError("Closed-loop evaluation requires num_rollouts > 0.")
+    if execute_per_replan <= 0:
+        raise ValueError("Closed-loop evaluation requires execute_per_replan > 0.")
+    if horizon <= 0:
+        raise ValueError("Closed-loop evaluation requires rollout_horizon > 0.")
     code_source = cfg.get("idm", {}).get("code_source", "gt")
     use_verifier = bool(cfg.get("evaluation", {}).get("use_verifier", False))
     num_candidates = int(cfg.get("evaluation", {}).get("num_candidates", 4))
@@ -77,7 +83,7 @@ def evaluate_closed_loop(cfg: dict[str, Any], checkpoint_path: str, device: torc
         velocity = proprio_hist[-1, 2:4].clone()
         executed_actions = []
 
-        for _ in range(0, horizon, execute_per_replan):
+        while len(executed_actions) < horizon:
             oracle_clip = _oracle_future_clip(sample | {"proprio_hist": proprio_hist, "rgb_hist": obs_hist}, build_window_spec(cfg).future_video_horizon)
             oracle_codes = adapter.encode_local_clip(oracle_clip.unsqueeze(0).to(device))["codes"]
             state_tokens, _ = state_encoder(
@@ -129,7 +135,8 @@ def evaluate_closed_loop(cfg: dict[str, Any], checkpoint_path: str, device: torc
                 reranked, _ = verifier.rerank(verifier_tokens, candidate_actions, target_codes)
                 action_chunk = reranked[0]
 
-            for action in action_chunk[:execute_per_replan].cpu():
+            remaining_horizon = horizon - len(executed_actions)
+            for action in action_chunk[: min(execute_per_replan, remaining_horizon)].cpu():
                 action = action.clamp(-action_scale, action_scale)
                 executed_actions.append(action)
                 velocity = action
@@ -144,12 +151,14 @@ def evaluate_closed_loop(cfg: dict[str, Any], checkpoint_path: str, device: torc
         successes.append(float(rollout_success(position.unsqueeze(0), target.unsqueeze(0)).cpu()))
         jerk_scores.append(float(jerk_metric(executed_tensor).cpu()))
 
+    if not successes:
+        raise ValueError("Closed-loop evaluation produced no rollouts.")
     metrics = {
-        "rollout_success": sum(successes) / max(len(successes), 1),
-        "jerk": sum(jerk_scores) / max(len(jerk_scores), 1),
+        "rollout_success": sum(successes) / len(successes),
+        "jerk": sum(jerk_scores) / len(jerk_scores),
         "planner_code_accuracy": sum(planner_acc) / len(planner_acc) if planner_acc else None,
     }
-    return metrics
+    return ensure_finite_metrics(metrics, context="closed-loop evaluation")
 
 
 def main() -> None:

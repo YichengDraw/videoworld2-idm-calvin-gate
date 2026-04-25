@@ -20,7 +20,7 @@ from videoworld2.robot_idm.utils.checkpoint import (
 )
 from videoworld2.robot_idm.utils.config import load_config
 from videoworld2.robot_idm.utils.factory import build_direct_policy, build_idm, build_planner, build_state_encoder, build_verifier
-from videoworld2.robot_idm.utils.metrics import action_mse, discounted_gaussian_nll, jerk_metric
+from videoworld2.robot_idm.utils.metrics import action_mse, discounted_gaussian_nll, ensure_finite_metrics, jerk_metric
 from videoworld2.robot_idm.utils.runtime import configure_determinism, resolve_device, save_json, to_device
 
 
@@ -104,7 +104,10 @@ def evaluate_offline(cfg: dict[str, Any], checkpoint_path: str, device: torch.de
     cfg["data"]["action_dim"] = int(sample_batch["action_chunk"].size(-1))
     adapter, state_encoder, idm, planner_encoder, planner, verifier_encoder, verifier = load_policy_bundle(cfg, checkpoint_path, device)
 
-    totals = {"action_nll": 0.0, "action_mse": 0.0, "jerk": 0.0}
+    use_verifier_eval = verifier is not None and cfg.get("evaluation", {}).get("use_verifier", False)
+    totals = {"action_mse": 0.0, "jerk": 0.0}
+    if not use_verifier_eval:
+        totals["action_nll"] = 0.0
     planner_code_accuracy_total = 0.0
     planner_code_accuracy_count = 0
     count = 0
@@ -136,7 +139,7 @@ def evaluate_offline(cfg: dict[str, Any], checkpoint_path: str, device: torch.de
             embodiment_id=batch["embodiment_id"].long(),
         )
 
-        if verifier is not None and cfg.get("evaluation", {}).get("use_verifier", False):
+        if use_verifier_eval:
             verifier_tokens = state_tokens
             if verifier_encoder is not None:
                 verifier_tokens, _ = verifier_encoder(**state_inputs)
@@ -148,20 +151,25 @@ def evaluate_offline(cfg: dict[str, Any], checkpoint_path: str, device: torch.de
             mean = reranked
             log_std = torch.zeros_like(reranked)
 
-        nll = discounted_gaussian_nll(mean, log_std, batch["action_chunk"], gamma=float(cfg["training"].get("gamma_discount", 0.97)))
         mse = action_mse(mean, batch["action_chunk"])
         jerk = jerk_metric(mean)
         batch_size = batch["action_chunk"].size(0)
-        totals["action_nll"] += float(nll.detach().cpu()) * batch_size
+        if not use_verifier_eval:
+            nll = discounted_gaussian_nll(mean, log_std, batch["action_chunk"], gamma=float(cfg["training"].get("gamma_discount", 0.97)))
+            totals["action_nll"] += float(nll.detach().cpu()) * batch_size
         totals["action_mse"] += float(mse.detach().cpu()) * batch_size
         totals["jerk"] += float(jerk.detach().cpu()) * batch_size
         count += batch_size
 
-    metrics: dict[str, float | None] = {key: value / max(count, 1) for key, value in totals.items()}
+    if count == 0:
+        raise ValueError("Offline evaluation produced no validation samples.")
+    metrics: dict[str, float | None] = {key: value / count for key, value in totals.items()}
+    if use_verifier_eval:
+        metrics["action_nll"] = None
     metrics["planner_code_accuracy"] = (
         planner_code_accuracy_total / planner_code_accuracy_count if planner_code_accuracy_count else None
     )
-    return metrics
+    return ensure_finite_metrics(metrics, context="offline evaluation")
 
 
 def main() -> None:

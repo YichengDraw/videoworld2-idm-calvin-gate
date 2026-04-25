@@ -136,15 +136,15 @@ class OfficialDLDMTokenizer(nn.Module):
                 for key, value in cleaned.items()
                 if key in expected and hasattr(value, "shape") and expected[key].shape == value.shape
             }
-            expected_params = set(dict(self.model.named_parameters()))
-            loaded_params = expected_params & set(filtered)
-            missing_params = sorted(expected_params - loaded_params)
-            missing_required_params = [key for key in missing_params if not key.startswith("decoder.")]
-            if missing_required_params and not bool(cfg.get("allow_partial_checkpoint", False)):
-                sample = ", ".join(missing_required_params[:5])
+            expected_keys = set(expected)
+            loaded_keys = expected_keys & set(filtered)
+            missing_tensors = sorted(expected_keys - loaded_keys)
+            missing_required_tensors = [key for key in missing_tensors if not key.startswith("decoder.")]
+            if missing_required_tensors and not bool(cfg.get("allow_partial_checkpoint", False)):
+                sample = ", ".join(missing_required_tensors[:5])
                 raise ValueError(
-                    f"Official tokenizer checkpoint did not load all encode-path model parameters; "
-                    f"sample missing parameters: {sample}. Set allow_partial_checkpoint=true only for diagnostics."
+                    f"Official tokenizer checkpoint did not load all encode-path model parameters or buffers; "
+                    f"sample missing parameters or buffers: {sample}. Set allow_partial_checkpoint=true only for diagnostics."
                 )
             if not filtered:
                 raise ValueError(f"Official tokenizer checkpoint produced no loadable tensors: {resolved_checkpoint}")

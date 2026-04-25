@@ -13,7 +13,7 @@ from videoworld2.robot_idm.models.dldm_local_adapter import DLDMLocalAdapter
 from videoworld2.robot_idm.train.common import ensure_code_caches
 from videoworld2.robot_idm.utils.config import load_config
 from videoworld2.robot_idm.utils.factory import build_train_val_datasets, build_window_spec
-from videoworld2.robot_idm.utils.metrics import rollout_success
+from videoworld2.robot_idm.utils.metrics import ensure_finite_metrics, rollout_success
 from videoworld2.robot_idm.utils.runtime import resolve_device, save_json
 
 
@@ -37,7 +37,7 @@ def collect_debug_stats(
     dataset = train_dataset if split == "train" else val_dataset
     sample = dataset[0]
     cfg["data"]["action_dim"] = int(sample["action_chunk"].size(-1))
-    adapter, state_encoder, idm, planner_encoder, planner, verifier = load_policy_bundle(cfg, checkpoint_path, device)
+    adapter, state_encoder, idm, planner_encoder, planner, verifier_encoder, verifier = load_policy_bundle(cfg, checkpoint_path, device)
     if cfg["idm"].get("code_source", "gt") == "predicted" and planner is None:
         raise ValueError("Predicted-code debug stats require a planner checkpoint.")
 
@@ -51,6 +51,12 @@ def collect_debug_stats(
 
     horizon = int(cfg.get("evaluation", {}).get("rollout_horizon", 16))
     execute_per_replan = int(cfg.get("evaluation", {}).get("execute_per_replan", cfg["data"].get("action_chunk", 8) // 2))
+    if max_rollouts <= 0:
+        raise ValueError("Debug rollout stats require max_rollouts > 0.")
+    if execute_per_replan <= 0:
+        raise ValueError("Debug rollout stats require execute_per_replan > 0.")
+    if horizon <= 0:
+        raise ValueError("Debug rollout stats require rollout_horizon > 0.")
     future_horizon = build_window_spec(cfg).future_video_horizon
     progress_curves = []
 
@@ -75,7 +81,7 @@ def collect_debug_stats(
 
         data_actions.append(sample["action_chunk"])
 
-        for _ in range(0, horizon, execute_per_replan):
+        while len(sample_progress) < horizon:
             oracle_clip = _oracle_future_clip(sample | {"proprio_hist": proprio_hist, "rgb_hist": obs_hist}, future_horizon)
             oracle_codes = adapter.encode_local_clip(oracle_clip.unsqueeze(0).to(device))["codes"]
             state_tokens, _ = state_encoder(
@@ -115,7 +121,8 @@ def collect_debug_stats(
             if first_action_error is None:
                 first_action_error = float(torch.mean((executed_chunk[0].cpu() - sample["action_chunk"][0]) ** 2).item())
 
-            for action in executed_chunk[:execute_per_replan].cpu():
+            remaining_horizon = horizon - len(sample_progress)
+            for action in executed_chunk[: min(execute_per_replan, remaining_horizon)].cpu():
                 rollout_actions.append(action)
                 velocity = action
                 position = (position + dt * velocity).clamp(0.05, 0.95)
@@ -134,28 +141,34 @@ def collect_debug_stats(
             first_action_errors.append(first_action_error)
         progress_curves.append(sample_progress)
 
+    if not successes:
+        raise ValueError("Debug rollout stats produced no rollouts.")
     dataset_actions = torch.cat([chunk.reshape(-1, chunk.size(-1)) for chunk in data_actions], dim=0)
-    rollout_actions_tensor = torch.stack(rollout_actions) if rollout_actions else torch.zeros(1, dataset_actions.size(-1))
+    if not rollout_actions:
+        raise ValueError("Debug rollout stats produced no executed actions.")
+    rollout_actions_tensor = torch.stack(rollout_actions)
+    if clip_total == 0:
+        raise ValueError("Debug rollout stats produced no actions for clip statistics.")
     max_steps = max((len(curve) for curve in progress_curves), default=0)
     mean_progress = []
     for step in range(max_steps):
         values = [curve[step] for curve in progress_curves if step < len(curve)]
         mean_progress.append(sum(values) / len(values))
 
-    return {
+    return ensure_finite_metrics({
         "split": split,
         "episodes": min(max_rollouts, len(dataset)),
         "dataset_action_mean": dataset_actions.mean(dim=0).tolist(),
         "dataset_action_std": dataset_actions.std(dim=0, unbiased=False).tolist(),
         "rollout_action_mean": rollout_actions_tensor.mean(dim=0).tolist(),
         "rollout_action_std": rollout_actions_tensor.std(dim=0, unbiased=False).tolist(),
-        "first_action_mse": sum(first_action_errors) / max(len(first_action_errors), 1),
+        "first_action_mse": sum(first_action_errors) / len(first_action_errors),
         "clip_count": clip_count,
-        "clip_fraction": clip_count / max(clip_total, 1),
+        "clip_fraction": clip_count / clip_total,
         "mean_progress_per_step": mean_progress,
-        "rollout_success": sum(successes) / max(len(successes), 1),
+        "rollout_success": sum(successes) / len(successes),
         "planner_code_accuracy": sum(planner_acc) / len(planner_acc) if planner_acc else None,
-    }
+    }, context="debug action stats")
 
 
 def _write_plot(stats: dict[str, object], output_path: Path) -> None:

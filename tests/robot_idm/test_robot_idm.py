@@ -11,7 +11,7 @@ from unittest import mock
 import numpy as np
 import torch
 
-from scripts import package_phase1_results
+from scripts import audit_rescued_artifacts, package_phase1_results
 from videoworld2.robot_idm.data.calvin_window_dataset import CalvinWindowDataset, _calvin_frame_fingerprint
 from videoworld2.robot_idm.data.robot_latent_dataset import RobotLatentWindowDataset
 from videoworld2.robot_idm.data.robot_window_dataset import RobotWindowDataset, WindowSpec, _file_fingerprint, build_window_index
@@ -30,7 +30,7 @@ from videoworld2.robot_idm.train.common import (
 )
 from videoworld2.robot_idm.train.train_idm import build_trainable_policy
 from videoworld2.robot_idm.utils.config import load_config
-from videoworld2.robot_idm.utils.checkpoint import auxiliary_checkpoint_metadata, checkpoint_reference, find_resume_path, load_checkpoint, policy_checkpoint_metadata, teacher_policy_checkpoint_metadata
+from videoworld2.robot_idm.utils.checkpoint import adapter_checkpoint_metadata, auxiliary_checkpoint_metadata, checkpoint_reference, find_resume_path, load_checkpoint, policy_checkpoint_metadata, teacher_policy_checkpoint_metadata
 from videoworld2.robot_idm.utils.factory import _resolve_path, build_idm, build_state_encoder, validate_manifest_pair
 from videoworld2.robot_idm.utils.latent_cache import LatentCodeCache
 from videoworld2.robot_idm.utils.phase0 import prepare_phase0_overfit_cfg
@@ -53,6 +53,97 @@ def _make_episode(path: Path, episode_id: str, length: int = 24) -> None:
         },
         path,
     )
+
+
+def _make_sample(action_value: float = 0.0) -> dict[str, object]:
+    return {
+        "rgb_hist": torch.zeros(1, 4, 3, 32, 32),
+        "proprio_hist": torch.zeros(1, 4, 4),
+        "lang": [""],
+        "embodiment_id": torch.zeros(1, dtype=torch.long),
+        "future_code_embeds": torch.zeros(1, 4, 64),
+        "future_codes": torch.zeros(1, 4, dtype=torch.long),
+        "past_action_hist": torch.zeros(1, 4, 2),
+        "action_chunk": torch.full((1, 8, 2), action_value),
+    }
+
+
+def _make_single_sample(action_value: float = 0.0) -> dict[str, object]:
+    return {
+        "rgb_hist": torch.zeros(4, 3, 32, 32),
+        "proprio_hist": torch.zeros(4, 4),
+        "lang": "",
+        "embodiment_id": torch.tensor(0),
+        "future_code_embeds": torch.zeros(4, 64),
+        "future_codes": torch.zeros(4, dtype=torch.long),
+        "past_action_hist": torch.zeros(4, 2),
+        "action_chunk": torch.full((8, 2), action_value),
+        "meta": {
+            "target": torch.tensor([0.5, 0.5]),
+            "swirl": 0.0,
+            "embodiment_gain": 1.0,
+            "dt": 0.1,
+            "action_scale": 1.0,
+            "image_size": 32,
+        },
+    }
+
+
+class _FakeLoader:
+    def __init__(self, batches: list[dict[str, object]], sample: dict[str, object] | None = None, length: int | None = None) -> None:
+        self._batches = batches
+        self._sample = sample or (batches[0] if batches else _make_single_sample())
+        self._length = len(batches) if length is None else length
+        self.dataset = self
+
+    def __iter__(self):
+        return iter(self._batches)
+
+    def __len__(self) -> int:
+        return self._length
+
+    def __getitem__(self, index: int) -> dict[str, object]:
+        return self._sample
+
+
+class _FakeAdapter(torch.nn.Module):
+    backend = "mock_geometry"
+    vocab_size = 8
+    n_codes = 4
+    embed_dim = 64
+
+    def encode_local_clip(self, clip: torch.Tensor) -> dict[str, torch.Tensor]:
+        batch = clip.size(0)
+        return {
+            "codes": torch.zeros(batch, self.n_codes, dtype=torch.long, device=clip.device),
+            "embeds": torch.zeros(batch, self.n_codes, self.embed_dim, device=clip.device),
+        }
+
+    def code_embed(self, codes: torch.Tensor) -> torch.Tensor:
+        return torch.zeros(*codes.shape, self.embed_dim, device=codes.device)
+
+
+class _FakeStateEncoder(torch.nn.Module):
+    def forward(self, **kwargs):
+        batch = kwargs["rgb_hist"].size(0)
+        return torch.zeros(batch, 6, 64, device=kwargs["rgb_hist"].device), None
+
+
+class _FakePolicy(torch.nn.Module):
+    def __init__(self, mean_value: float = 0.0) -> None:
+        super().__init__()
+        self.mean_value = mean_value
+
+    def forward(self, **kwargs):
+        state_tokens = kwargs["state_tokens"]
+        mean = torch.full((state_tokens.size(0), 8, 2), self.mean_value, device=state_tokens.device)
+        log_std = torch.zeros_like(mean)
+        return mean, log_std
+
+
+class _FakeVerifier(torch.nn.Module):
+    def rerank(self, state_tokens: torch.Tensor, candidate_actions: torch.Tensor, target_codes: torch.Tensor):
+        return candidate_actions[:, 0], torch.zeros(candidate_actions.size(0), candidate_actions.size(1), device=candidate_actions.device)
 
 
 class RobotIDMTests(unittest.TestCase):
@@ -547,6 +638,39 @@ class RobotIDMTests(unittest.TestCase):
                 )
             self.assertEqual(adapter.backend, "official")
 
+    def test_official_adapter_rejects_missing_encode_buffer(self) -> None:
+        class FakeOfficialTokenizer(torch.nn.Module):
+            def __init__(self, **kwargs) -> None:
+                super().__init__()
+                self.encoder = torch.nn.Linear(2, 2)
+                self.register_buffer("encode_scale", torch.ones(2))
+
+        fake_module = types.ModuleType("videoworld2.latent_dynamics.discrete_video_latent_dynamic")
+        fake_module.CausalDiscreteVideoLatentDynamicTokenizer = FakeOfficialTokenizer
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            checkpoint_path = Path(tmp_dir) / "tokenizer.pt"
+            model = FakeOfficialTokenizer()
+            torch.save(
+                {
+                    "state_dict": {
+                        "encoder.weight": model.encoder.weight.detach().clone(),
+                        "encoder.bias": model.encoder.bias.detach().clone(),
+                    }
+                },
+                checkpoint_path,
+            )
+            with mock.patch.dict("sys.modules", {"videoworld2.latent_dynamics.discrete_video_latent_dynamic": fake_module}):
+                with self.assertRaisesRegex(ValueError, "parameters or buffers"):
+                    DLDMLocalAdapter(
+                        {
+                            "backend": "official",
+                            "checkpoint_path": str(checkpoint_path),
+                            "embed_dim": 4,
+                            "vocab_size": 8,
+                            "n_codes": 2,
+                        }
+                    )
+
     def test_latent_cache_indexing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             cache_path = Path(tmp_dir) / "codes.pt"
@@ -568,6 +692,15 @@ class RobotIDMTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "metadata mismatch"):
                 LatentCodeCache(cache_path, expected_metadata={"metadata_version": 2, "split": "val"})
+
+    def test_save_json_rejects_non_finite_numbers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output = Path(tmp_dir) / "metrics.json"
+
+            with self.assertRaisesRegex(ValueError, "non-finite JSON number"):
+                save_json({"metrics": {"action_nll": float("nan")}}, output)
+
+            self.assertFalse(output.exists())
 
     def test_planner_output_shape(self) -> None:
         planner = LatentPlanner(vocab_size=32, n_codes=4, d_model=64, depth=2, n_heads=4)
@@ -607,6 +740,20 @@ class RobotIDMTests(unittest.TestCase):
         chosen, scores = verifier.rerank(state_tokens, candidates, target_codes)
         self.assertEqual(chosen.shape, (2, 8, 2))
         self.assertEqual(scores.shape, (2, 3))
+
+    def test_verifier_rerank_uses_per_candidate_jerk(self) -> None:
+        verifier = ForwardVerifier(action_dim=1, vocab_size=3, n_codes=2, d_model=8, depth=1, n_heads=1, dropout=0.0)
+        state_tokens = torch.zeros(1, 2, 8)
+        target_codes = torch.zeros(1, 2, dtype=torch.long)
+        jerky = torch.tensor([[[1.0], [-1.0], [1.0], [-1.0], [1.0]]])
+        smooth = torch.tensor([[[-1.0], [-0.5], [0.0], [0.5], [1.0]]])
+        candidates = torch.stack([jerky, smooth], dim=1)
+
+        with mock.patch.object(verifier, "forward", return_value=torch.zeros(2, 2, 3)):
+            chosen, scores = verifier.rerank(state_tokens, candidates, target_codes, alpha=1.0, beta=0.0)
+
+        self.assertTrue(torch.equal(chosen, smooth))
+        self.assertGreater(float(scores[0, 1]), float(scores[0, 0]))
 
     def test_predicted_code_conditioning_requires_planner(self) -> None:
         cfg = {
@@ -1047,6 +1194,99 @@ class RobotIDMTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "Missing key"):
                 maybe_resume_training(root, modules={"model": torch.nn.Linear(2, 1)})
 
+    def test_resume_training_requires_all_module_states(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            checkpoint_dir = root / "checkpoints"
+            checkpoint_dir.mkdir()
+            torch.save({"epoch": 3, "global_step": 7, "best_metric": 1.0}, checkpoint_dir / "last.pt")
+
+            with self.assertRaisesRegex(ValueError, "missing module states"):
+                maybe_resume_training(root, modules={"model": torch.nn.Linear(2, 1)})
+
+    def test_resume_training_requires_optimizer_state_when_requested(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            checkpoint_dir = root / "checkpoints"
+            checkpoint_dir.mkdir()
+            model = torch.nn.Linear(2, 1)
+            torch.save({"model": model.state_dict()}, checkpoint_dir / "last.pt")
+            optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+            with self.assertRaisesRegex(ValueError, "missing optimizer state"):
+                maybe_resume_training(root, modules={"model": model}, optimizer=optimizer)
+
+    def test_training_epoch_rejects_empty_loader(self) -> None:
+        from videoworld2.robot_idm.train.train_planner import run_epoch as planner_run_epoch
+        from videoworld2.robot_idm.train.train_idm import run_epoch as idm_run_epoch
+        from videoworld2.robot_idm.train.train_verifier import run_epoch as verifier_run_epoch
+
+        state_encoder = torch.nn.Linear(1, 1)
+        planner = torch.nn.Linear(1, 1)
+        optimizer = torch.optim.Adam(list(state_encoder.parameters()) + list(planner.parameters()), lr=1e-3)
+
+        with self.assertRaisesRegex(ValueError, "no samples"):
+            planner_run_epoch([], state_encoder, planner, optimizer, torch.device("cpu"), training=False)
+
+        with self.assertRaisesRegex(ValueError, "no samples"):
+            idm_run_epoch(
+                {"idm": {}, "training": {}},
+                [],
+                state_encoder,
+                _FakePolicy(),
+                _FakeAdapter(),
+                None,
+                None,
+                optimizer,
+                torch.device("cpu"),
+                training=False,
+            )
+
+        with self.assertRaisesRegex(ValueError, "no samples"):
+            verifier_run_epoch([], state_encoder, ForwardVerifier(2, 8, 4, d_model=8, depth=1, n_heads=1), optimizer, torch.device("cpu"), training=False)
+
+    def test_eval_paths_reject_empty_outputs(self) -> None:
+        from scripts import debug_action_stats, eval_oracle_replay
+        from videoworld2.robot_idm.eval import eval_closed_loop, eval_offline_idm
+
+        cfg = {
+            "adapter": {"backend": "mock_geometry", "embed_dim": 64},
+            "data": {"dataset_type": "mock", "action_chunk": 8},
+            "training": {"seed": 7},
+            "idm": {"variant": "bc", "code_source": "gt", "use_future_codes": False, "use_past_actions": False},
+            "evaluation": {"num_rollouts": 4, "execute_per_replan": 2, "rollout_horizon": 4},
+        }
+        empty_loader = _FakeLoader([], sample=_make_sample(), length=0)
+        empty_dataset = _FakeLoader([], sample=_make_single_sample(), length=0)
+        policy_bundle = (_FakeAdapter(), _FakeStateEncoder(), _FakePolicy(), None, None, None, None)
+
+        with mock.patch.object(eval_offline_idm, "DLDMLocalAdapter", return_value=_FakeAdapter()), \
+            mock.patch.object(eval_offline_idm, "ensure_code_caches"), \
+            mock.patch.object(eval_offline_idm, "make_dataloaders", return_value=(None, empty_loader)), \
+            mock.patch.object(eval_offline_idm, "load_policy_bundle", return_value=policy_bundle):
+            with self.assertRaisesRegex(ValueError, "no validation samples"):
+                eval_offline_idm.evaluate_offline(dict(cfg), "checkpoint.pt", torch.device("cpu"))
+
+        with mock.patch.object(eval_closed_loop, "DLDMLocalAdapter", return_value=_FakeAdapter()), \
+            mock.patch.object(eval_closed_loop, "ensure_code_caches"), \
+            mock.patch.object(eval_closed_loop, "build_train_val_datasets", return_value=(None, empty_dataset)), \
+            mock.patch.object(eval_closed_loop, "load_policy_bundle", return_value=policy_bundle):
+            with self.assertRaisesRegex(ValueError, "no rollouts"):
+                eval_closed_loop.evaluate_closed_loop(dict(cfg), "checkpoint.pt", torch.device("cpu"))
+
+        with mock.patch.object(debug_action_stats, "DLDMLocalAdapter", return_value=_FakeAdapter()), \
+            mock.patch.object(debug_action_stats, "ensure_code_caches"), \
+            mock.patch.object(debug_action_stats, "build_train_val_datasets", return_value=(empty_dataset, empty_dataset)), \
+            mock.patch.object(debug_action_stats, "load_policy_bundle", return_value=policy_bundle):
+            with self.assertRaisesRegex(ValueError, "no rollouts"):
+                debug_action_stats.collect_debug_stats(dict(cfg), "checkpoint.pt", split="val", device=torch.device("cpu"), max_rollouts=4)
+
+        with mock.patch.object(eval_oracle_replay, "prepare_mock_data_if_needed"), \
+            mock.patch.object(eval_oracle_replay, "resolve_config_path", return_value=Path("manifest.json")), \
+            mock.patch.object(eval_oracle_replay, "load_json", return_value={"episodes": []}):
+            with self.assertRaisesRegex(ValueError, "at least one episode"):
+                eval_oracle_replay.evaluate_oracle_replay({"data": {"dataset_type": "mock", "val_manifest": "manifest.json"}}, split="val")
+
     def test_load_config_preserves_adapter_source_dir(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
@@ -1137,6 +1377,97 @@ class RobotIDMTests(unittest.TestCase):
         self.assertFalse(metadata["idm_conditioning"]["use_future_codes"])
         self.assertFalse(metadata["idm_conditioning"]["use_past_actions"])
 
+    def test_adapter_metadata_binds_tokenizer_semantics(self) -> None:
+        metadata = adapter_checkpoint_metadata(
+            {
+                "adapter": {
+                    "backend": "official",
+                    "embed_dim": 32,
+                    "vocab_size": 128,
+                    "n_codes": 4,
+                    "init_seed": 123,
+                    "hidden_dim": 256,
+                    "official_kwargs": {"patch_size": 8},
+                    "allow_partial_checkpoint": True,
+                }
+            }
+        )
+
+        self.assertEqual(metadata["init_seed"], 123)
+        self.assertEqual(metadata["hidden_dim"], 256)
+        self.assertEqual(metadata["official_kwargs"], {"patch_size": 8})
+        self.assertTrue(metadata["allow_partial_checkpoint"])
+
+    def test_calvin_mini_config_uses_calvin_static_loader(self) -> None:
+        cfg = load_config("configs/vw2_idm/data_calvin_mini.yaml")
+
+        self.assertEqual(cfg["data"]["dataset_type"], "calvin_static")
+
+    def test_rescue_audit_binds_cache_keys_and_controller_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            manifest_dir = root / "datasets" / "calvin_static"
+            cache_dir = root / "cache"
+            manifest_dir.mkdir(parents=True)
+            cache_dir.mkdir()
+            spec = WindowSpec(history_frames=4, past_action_hist=4, future_video_horizon=8, action_chunk=8, stride=4)
+            train_manifest = {"episodes": [{"episode_id": "train_0", "root": "/remote/train", "start": 0, "end": 20}]}
+            val_manifest = {"episodes": [{"episode_id": "val_0", "root": "/remote/val", "start": 100, "end": 120}]}
+            save_json(train_manifest, manifest_dir / "train_manifest.json")
+            save_json(val_manifest, manifest_dir / "val_manifest.json")
+            train_windows = audit_rescued_artifacts.build_calvin_window_index(train_manifest["episodes"], spec)
+            val_windows = audit_rescued_artifacts.build_calvin_window_index(val_manifest["episodes"], spec)
+            save_json({"windows": train_windows}, cache_dir / "train_windows.json")
+            save_json({"windows": val_windows}, cache_dir / "val_windows.json")
+            torch.save({"records": [{"episode_id": item["episode_id"], "t": item["t"]} for item in train_windows]}, cache_dir / "train_local_codes.pt")
+            torch.save({"records": [{"episode_id": item["episode_id"], "t": item["t"]} for item in val_windows]}, cache_dir / "val_local_codes.pt")
+            controller_dirs = [
+                "bc_vis_calvin_4090",
+                "bc_vis_proprio_calvin_4090",
+                "history_gt_calvin_4090",
+                "pair_idm_calvin_4090",
+                "vw2_hidden_mlp_action_head_calvin_4090",
+            ]
+            for controller in controller_dirs:
+                controller_dir = root / "models" / controller
+                checkpoint_dir = controller_dir / "checkpoints"
+                checkpoint_dir.mkdir(parents=True)
+                (controller_dir / "resolved_config.yaml").write_text(f"name: {controller}\n", encoding="utf-8")
+                (controller_dir / "metrics.jsonl").write_text('{"epoch": 1}\n', encoding="utf-8")
+                save_json({"action_nll": 1.0, "action_mse": 2.0, "jerk": 3.0}, controller_dir / "offline_eval.json")
+                torch.save({"model_metadata": {"controller": controller}}, checkpoint_dir / "best.pt")
+
+            audit = audit_rescued_artifacts.audit_rescue(root)
+            source_paths = {record["path"] for record in audit["source_files"]}
+
+            self.assertFalse(audit["latent_cache"]["train_cache_has_duplicate_keys"])
+            self.assertFalse(audit["latent_cache"]["val_cache_has_duplicate_keys"])
+            self.assertTrue(audit["latent_cache"]["train_cache_keys_match_current_window_builder"])
+            self.assertTrue(audit["latent_cache"]["val_cache_keys_match_configured_window_prefix"])
+            self.assertIn("manifest_content_hash_boundary", audit)
+            for controller in controller_dirs:
+                self.assertIn(f"models/{controller}/resolved_config.yaml", source_paths)
+                self.assertIn(f"models/{controller}/metrics.jsonl", source_paths)
+                self.assertIn(f"models/{controller}/offline_eval.json", source_paths)
+                self.assertIn(f"models/{controller}/checkpoints/best.pt", source_paths)
+
+            duplicated_train_records = [
+                {"episode_id": train_windows[0]["episode_id"], "t": train_windows[0]["t"]},
+                {"episode_id": train_windows[0]["episode_id"], "t": train_windows[0]["t"]},
+            ]
+            torch.save({"records": duplicated_train_records}, cache_dir / "train_local_codes.pt")
+            duplicate_audit = audit_rescued_artifacts.audit_rescue(root)
+            self.assertTrue(duplicate_audit["latent_cache"]["train_cache_has_duplicate_keys"])
+            self.assertFalse(duplicate_audit["latent_cache"]["train_cache_keys_match_current_window_builder"])
+
+            torch.save({"records": [{"episode_id": item["episode_id"], "t": item["t"]} for item in train_windows]}, cache_dir / "train_local_codes.pt")
+            shifted_val_records = [{"episode_id": item["episode_id"], "t": item["t"] + 1} for item in val_windows]
+            torch.save({"records": shifted_val_records}, cache_dir / "val_local_codes.pt")
+            shifted_audit = audit_rescued_artifacts.audit_rescue(root)
+            self.assertFalse(shifted_audit["latent_cache"]["val_cache_has_duplicate_keys"])
+            self.assertFalse(shifted_audit["latent_cache"]["val_cache_keys_match_configured_window_prefix"])
+            self.assertFalse(shifted_audit["latent_cache"]["val_cache_is_configured_subset_of_full_val_index"])
+
     def test_phase1_packaging_requires_rescued_offline_eval_source(self) -> None:
         with mock.patch("sys.argv", ["package_phase1_results.py"]), mock.patch("sys.stderr", io.StringIO()):
             with self.assertRaises(SystemExit) as ctx:
@@ -1194,6 +1525,72 @@ class RobotIDMTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "hash mismatch"):
                 package_phase1_results.load_rescued_offline_metrics(models_dir, audit_json=audit_json)
+
+    def test_phase1_packaging_validates_all_audited_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            controller_config = root / "models" / "direct" / "resolved_config.yaml"
+            controller_config.parent.mkdir(parents=True)
+            controller_config.write_text("policy:\n  variant: mlp\n", encoding="utf-8")
+            audit_json = root / "audit.json"
+            save_json(
+                {
+                    "source_files": [
+                        {
+                            "path": "models/direct/resolved_config.yaml",
+                            "sha256": package_phase1_results._file_sha256(controller_config),
+                        }
+                    ]
+                },
+                audit_json,
+            )
+
+            package_phase1_results.validate_audited_source_files(root, audit_json)
+            controller_config.write_text("policy:\n  variant: idm\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "source hash mismatch"):
+                package_phase1_results.validate_audited_source_files(root, audit_json)
+
+    def test_phase1_packaging_rejects_non_finite_metrics(self) -> None:
+        metrics = {
+            "direct": {
+                "action_nll": float("nan"),
+                "action_mse": 2.0,
+                "jerk": 3.0,
+            }
+        }
+        metadata = {
+            "direct": {
+                "conditioning": "direct_policy",
+                "privileged_future_codes": False,
+                "deployable_without_future_labels": True,
+            }
+        }
+
+        with self.assertRaisesRegex(ValueError, "Non-finite metric"):
+            package_phase1_results.package_metrics(metrics, metadata, "rescued_offline_eval_json")
+
+    def test_phase1_unaudited_packaging_marks_metric_origin(self) -> None:
+        metrics = {
+            "direct": {
+                "action_nll": 1.0,
+                "action_mse": 2.0,
+                "jerk": 3.0,
+                "planner_code_accuracy": 0.0,
+            }
+        }
+        metadata = {
+            "direct": {
+                "conditioning": "direct_policy",
+                "privileged_future_codes": False,
+                "deployable_without_future_labels": True,
+            }
+        }
+
+        packaged = package_phase1_results.package_metrics(metrics, metadata, "unaudited_rescued_offline_eval_json")
+        prov = package_phase1_results.provenance(audited_rescue_hashes=False)
+
+        self.assertEqual(packaged["direct"]["metric_origin"], "unaudited_rescued_offline_eval_json")
+        self.assertFalse(prov["phase1_offline_metrics"]["audited_rescue_hashes"])
 
     def test_committed_non_planner_metrics_use_null_accuracy(self) -> None:
         phase0 = load_json("results/phase0_summaries.json")
@@ -1501,6 +1898,48 @@ class RobotIDMTests(unittest.TestCase):
             self.assertIsNotNone(loaded_verifier_encoder)
             self.assertTrue(torch.equal(loaded_verifier_encoder.state_dict()[first_key], verifier_state[first_key]))
             self.assertFalse(torch.equal(loaded_policy_encoder.state_dict()[first_key], verifier_state[first_key]))
+
+    def test_verifier_eval_marks_action_nll_not_applicable(self) -> None:
+        from videoworld2.robot_idm.eval import eval_offline_idm
+
+        cfg = {
+            "adapter": {"backend": "mock_geometry", "embed_dim": 64},
+            "data": {"dataset_type": "mock", "action_chunk": 8},
+            "training": {"seed": 7, "gamma_discount": 0.97},
+            "idm": {"variant": "bc", "code_source": "gt", "use_future_codes": False, "use_past_actions": False},
+            "evaluation": {"use_verifier": True, "num_candidates": 2},
+        }
+        loader = _FakeLoader([_make_sample(action_value=1.0)], sample=_make_sample(action_value=1.0))
+        policy_bundle = (_FakeAdapter(), _FakeStateEncoder(), _FakePolicy(mean_value=0.0), None, None, _FakeStateEncoder(), _FakeVerifier())
+
+        with mock.patch.object(eval_offline_idm, "DLDMLocalAdapter", return_value=_FakeAdapter()), \
+            mock.patch.object(eval_offline_idm, "ensure_code_caches"), \
+            mock.patch.object(eval_offline_idm, "make_dataloaders", return_value=(None, loader)), \
+            mock.patch.object(eval_offline_idm, "load_policy_bundle", return_value=policy_bundle):
+            metrics = eval_offline_idm.evaluate_offline(dict(cfg), "checkpoint.pt", torch.device("cpu"))
+
+        self.assertIsNone(metrics["action_nll"])
+        self.assertGreaterEqual(metrics["action_mse"], 0.0)
+
+    def test_offline_eval_rejects_non_finite_metrics(self) -> None:
+        from videoworld2.robot_idm.eval import eval_offline_idm
+
+        cfg = {
+            "adapter": {"backend": "mock_geometry", "embed_dim": 64},
+            "data": {"dataset_type": "mock", "action_chunk": 8},
+            "training": {"seed": 7, "gamma_discount": 0.97},
+            "idm": {"variant": "bc", "code_source": "gt", "use_future_codes": False, "use_past_actions": False},
+            "evaluation": {},
+        }
+        loader = _FakeLoader([_make_sample(action_value=1.0)], sample=_make_sample(action_value=1.0))
+        policy_bundle = (_FakeAdapter(), _FakeStateEncoder(), _FakePolicy(mean_value=float("nan")), None, None, None, None)
+
+        with mock.patch.object(eval_offline_idm, "DLDMLocalAdapter", return_value=_FakeAdapter()), \
+            mock.patch.object(eval_offline_idm, "ensure_code_caches"), \
+            mock.patch.object(eval_offline_idm, "make_dataloaders", return_value=(None, loader)), \
+            mock.patch.object(eval_offline_idm, "load_policy_bundle", return_value=policy_bundle):
+            with self.assertRaisesRegex(ValueError, "Non-finite metric"):
+                eval_offline_idm.evaluate_offline(dict(cfg), "checkpoint.pt", torch.device("cpu"))
 
     def test_predicted_eval_rejects_incomplete_planner_checkpoint(self) -> None:
         from videoworld2.robot_idm.eval.eval_offline_idm import load_policy_bundle
