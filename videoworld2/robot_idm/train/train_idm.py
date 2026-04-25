@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 
 import torch
 
@@ -12,6 +11,7 @@ from videoworld2.robot_idm.train.common import (
     make_dataloaders,
     make_output_dir,
     maybe_resume_training,
+    resolve_config_path,
     sample_code_conditioning,
 )
 from videoworld2.robot_idm.utils.checkpoint import load_checkpoint, save_checkpoint
@@ -26,7 +26,7 @@ def load_planner_bundle(cfg, adapter, device: torch.device):
     planner_ckpt = cfg.get("idm", {}).get("planner_checkpoint")
     if not planner_ckpt:
         return None, None
-    planner_ckpt = str((Path(cfg["_meta"]["config_path"]).parent / planner_ckpt).resolve()) if not Path(planner_ckpt).is_absolute() else planner_ckpt
+    planner_ckpt = str(resolve_config_path(cfg, planner_ckpt))
     checkpoint = load_checkpoint(planner_ckpt, map_location=device)
     planner_encoder = build_state_encoder(cfg).to(device)
     planner = build_planner(cfg, adapter).to(device)

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 from typing import Any
 
 import torch
@@ -11,7 +10,7 @@ from videoworld2.robot_idm.models.forward_verifier import ForwardVerifier
 from videoworld2.robot_idm.models.inverse_dynamics import HistoryAwareIDM
 from videoworld2.robot_idm.models.latent_planner import LatentPlanner
 from videoworld2.robot_idm.models.state_encoder import StateEncoder
-from videoworld2.robot_idm.train.common import batch_to_state_encoder_inputs, ensure_code_caches, make_dataloaders
+from videoworld2.robot_idm.train.common import batch_to_state_encoder_inputs, ensure_code_caches, make_dataloaders, resolve_config_path
 from videoworld2.robot_idm.utils.checkpoint import load_checkpoint
 from videoworld2.robot_idm.utils.config import load_config
 from videoworld2.robot_idm.utils.factory import build_direct_policy, build_idm, build_planner, build_state_encoder, build_verifier
@@ -70,8 +69,7 @@ def load_policy_bundle(cfg: dict[str, Any], checkpoint_path: str, device: torch.
     planner = None
     planner_checkpoint = cfg.get("idm", {}).get("planner_checkpoint")
     if planner_checkpoint and use_predicted_codes:
-        if not Path(planner_checkpoint).is_absolute():
-            planner_checkpoint = str((Path(cfg["_meta"]["config_path"]).parent / planner_checkpoint).resolve())
+        planner_checkpoint = str(resolve_config_path(cfg, planner_checkpoint))
         planner_state = load_checkpoint(planner_checkpoint, map_location=device)
         planner_encoder = build_state_encoder(cfg).to(device)
         planner = build_planner(cfg, adapter).to(device)
@@ -83,8 +81,7 @@ def load_policy_bundle(cfg: dict[str, Any], checkpoint_path: str, device: torch.
     verifier = None
     verifier_checkpoint = cfg.get("evaluation", {}).get("verifier_checkpoint")
     if verifier_checkpoint:
-        if not Path(verifier_checkpoint).is_absolute():
-            verifier_checkpoint = str((Path(cfg["_meta"]["config_path"]).parent / verifier_checkpoint).resolve())
+        verifier_checkpoint = str(resolve_config_path(cfg, verifier_checkpoint))
         verifier_state = load_checkpoint(verifier_checkpoint, map_location=device)
         verifier = build_verifier(cfg, adapter, action_dim=action_dim).to(device)
         verifier.load_state_dict(verifier_state["verifier"], strict=True)

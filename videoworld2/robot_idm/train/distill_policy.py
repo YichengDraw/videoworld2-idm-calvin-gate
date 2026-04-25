@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 
 import torch
 import torch.nn.functional as F
 
 from videoworld2.robot_idm.models.dldm_local_adapter import DLDMLocalAdapter
-from videoworld2.robot_idm.train.common import batch_to_state_encoder_inputs, ensure_code_caches, make_dataloaders, make_output_dir, maybe_resume_training
+from videoworld2.robot_idm.train.common import batch_to_state_encoder_inputs, ensure_code_caches, make_dataloaders, make_output_dir, maybe_resume_training, resolve_config_path
 from videoworld2.robot_idm.utils.checkpoint import load_checkpoint, save_checkpoint
 from videoworld2.robot_idm.utils.config import load_config
 from videoworld2.robot_idm.utils.factory import build_direct_policy, build_state_encoder
@@ -37,8 +36,7 @@ def main() -> None:
     teacher_encoder = None
     teacher_idm = None
     if teacher_checkpoint:
-        if not Path(teacher_checkpoint).is_absolute():
-            teacher_checkpoint = str((Path(cfg["_meta"]["config_path"]).parent / teacher_checkpoint).resolve())
+        teacher_checkpoint = str(resolve_config_path(cfg, teacher_checkpoint))
         teacher_state = load_checkpoint(teacher_checkpoint, map_location=device)
         from videoworld2.robot_idm.utils.factory import build_idm
 

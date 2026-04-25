@@ -1,5 +1,8 @@
 {
   "oracle_replay": {
+    "dataset_type": "mock",
+    "real_calvin_closed_loop": false,
+    "result_role": "synthetic_oracle_diagnostic",
     "split": "val",
     "episodes": 24,
     "rollout_success": 1.0,
@@ -7,6 +10,11 @@
     "mean_num_actions": 40.0
   },
   "bc_overfit_e12": {
+    "dataset_type": "mock",
+    "real_calvin_closed_loop": false,
+    "privileged_future_codes": false,
+    "deployable_without_future_labels": true,
+    "result_role": "synthetic_smoke_policy",
     "offline": {
       "action_nll": -1.4520837465922039,
       "action_mse": 0.0028300813088814416,
@@ -20,6 +28,11 @@
     }
   },
   "bc_overfit_e12_repeat": {
+    "dataset_type": "mock",
+    "real_calvin_closed_loop": false,
+    "privileged_future_codes": false,
+    "deployable_without_future_labels": true,
+    "result_role": "synthetic_smoke_policy_repeat",
     "offline": {
       "action_nll": -1.4496506849924724,
       "action_mse": 0.0027027640026062727,
@@ -33,6 +46,12 @@
     }
   },
   "history_gt_overfit_e12": {
+    "dataset_type": "mock",
+    "real_calvin_closed_loop": false,
+    "privileged_future_codes": true,
+    "deployable_without_future_labels": false,
+    "conditioning": "ground_truth_future_codes",
+    "result_role": "synthetic_privileged_upper_bound",
     "offline": {
       "action_nll": 0.6666473944981893,
       "action_mse": 0.0034573653247207403,
@@ -46,6 +65,12 @@
     }
   },
   "history_gt_overfit_e12_repeat": {
+    "dataset_type": "mock",
+    "real_calvin_closed_loop": false,
+    "privileged_future_codes": true,
+    "deployable_without_future_labels": false,
+    "conditioning": "ground_truth_future_codes",
+    "result_role": "synthetic_privileged_upper_bound_repeat",
     "offline": {
       "action_nll": 0.6952779690424601,
       "action_mse": 0.00336145656183362,

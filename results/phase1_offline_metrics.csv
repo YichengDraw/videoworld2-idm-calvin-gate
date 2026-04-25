@@ -1,6 +1,6 @@
-controller,action_nll,action_mse,jerk,planner_code_accuracy
-bc_vis,1.5922118127346039,0.1807790226303041,1.379149270341884e-07,0.0
-bc_vis_proprio,1.3850337527692318,0.19142329040914774,6.409826678321906e-07,0.0
-pair_idm_gtcode,1.3868949189782143,0.1839401382021606,2.0567617298183904e-06,0.0
-history_idm_gtcode,0.9067741520702839,0.1781598892994225,1.0351683399356659e-07,0.0
-vw2_hidden_mlp_action_head,0.023315516649745405,0.1789883659221232,0.003560257246135734,0.0
+controller,action_nll,action_mse,jerk,planner_code_accuracy,privileged_future_codes,deployable_without_future_labels,conditioning,result_role
+bc_vis,1.5922118127346039,0.1807790226303041,1.379149270341884e-07,0.0,false,true,direct_policy,deployable_policy
+bc_vis_proprio,1.3850337527692318,0.19142329040914774,6.409826678321906e-07,0.0,false,true,direct_policy,deployable_policy
+pair_idm_gtcode,1.3868949189782143,0.1839401382021606,2.0567617298183904e-06,0.0,true,false,ground_truth_future_codes,privileged_upper_bound
+history_idm_gtcode,0.9067741520702839,0.1781598892994225,1.0351683399356659e-07,0.0,true,false,ground_truth_future_codes,privileged_upper_bound
+vw2_hidden_mlp_action_head,0.023315516649745405,0.1789883659221232,0.003560257246135734,0.0,false,true,direct_mlp_policy,deployable_policy

@@ -16,6 +16,7 @@ from videoworld2.robot_idm.models.forward_verifier import ForwardVerifier
 from videoworld2.robot_idm.models.inverse_dynamics import HistoryAwareIDM
 from videoworld2.robot_idm.models.latent_planner import LatentPlanner
 from videoworld2.robot_idm.train.common import (
+    _adapter_cache_metadata,
     _manifest_source_fingerprint,
     ensure_code_caches,
     make_dataloaders,
@@ -25,6 +26,7 @@ from videoworld2.robot_idm.train.common import (
 )
 from videoworld2.robot_idm.train.train_idm import build_trainable_policy
 from videoworld2.robot_idm.utils.config import load_config
+from videoworld2.robot_idm.utils.checkpoint import find_resume_path, load_checkpoint
 from videoworld2.robot_idm.utils.factory import _resolve_path, validate_manifest_pair
 from videoworld2.robot_idm.utils.latent_cache import LatentCodeCache
 from videoworld2.robot_idm.utils.phase0 import prepare_phase0_overfit_cfg
@@ -132,8 +134,25 @@ class RobotIDMTests(unittest.TestCase):
             )
 
             self.assertEqual(fingerprints[0]["file"]["path"], "/remote/episode.pt")
-            self.assertEqual(fingerprints[1]["first_frame"]["path"], "/remote/calvin/episode_0000000.npz")
-            self.assertEqual(fingerprints[1]["last_frame"]["path"], "/remote/calvin/episode_0000020.npz")
+            self.assertEqual(fingerprints[1]["frame_range"], [0, 20])
+            self.assertEqual(fingerprints[1]["frames"][0]["path"], "/remote/calvin/episode_0000000.npz")
+            self.assertEqual(fingerprints[1]["frames"][-1]["path"], "/remote/calvin/episode_0000020.npz")
+            self.assertEqual(len(fingerprints[1]["frames"]), 21)
+
+    def test_calvin_cache_source_fingerprint_covers_interior_frames(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir) / "calvin"
+            root.mkdir()
+            for frame_idx in range(3):
+                (root / f"episode_{frame_idx:07d}.npz").write_bytes(f"frame-{frame_idx}".encode("utf-8"))
+            manifest_payload = {"episodes": [{"episode_id": "calvin_0", "root": "calvin", "start": 0, "end": 2}]}
+
+            before = _manifest_source_fingerprint(manifest_payload, Path(tmp_dir))
+            (root / "episode_0000001.npz").write_bytes(b"frame-1-mutated")
+            after = _manifest_source_fingerprint(manifest_payload, Path(tmp_dir))
+
+            self.assertNotEqual(before, after)
+            self.assertNotEqual(before[0]["frames"][1], after[0]["frames"][1])
 
     def test_config_level_remote_posix_paths_fail_before_local_remap(self) -> None:
         if Path("/remote/config.json").is_absolute():
@@ -146,6 +165,58 @@ class RobotIDMTests(unittest.TestCase):
             _resolve_path("C:/repo/configs/vw2_idm/exp.yaml", "/remote/train_manifest.json")
         with self.assertRaisesRegex(ValueError, "POSIX absolute path"):
             _resolve_path_from_config_dir("/remote/tokenizer.pt", "C:/repo/configs/vw2_idm")
+
+    def test_adapter_cache_metadata_uses_guarded_checkpoint_resolver(self) -> None:
+        if Path("/remote/tokenizer.pt").is_absolute():
+            self.skipTest("POSIX paths are native absolute paths on this platform")
+        cfg = {
+            "_meta": {"config_path": "C:/repo/configs/vw2_idm/exp.yaml"},
+            "adapter": {
+                "backend": "mock_geometry",
+                "checkpoint_path": "/remote/tokenizer.pt",
+                "vocab_size": 32,
+                "n_codes": 4,
+                "embed_dim": 128,
+            },
+        }
+        adapter = types.SimpleNamespace(backend="mock_geometry", vocab_size=32, n_codes=4, embed_dim=128)
+
+        with self.assertRaisesRegex(ValueError, "POSIX absolute path"):
+            _adapter_cache_metadata(cfg, adapter)
+
+    def test_checkpoint_config_paths_use_guarded_resolver(self) -> None:
+        repo_root = Path(__file__).resolve().parents[2]
+        files = [
+            repo_root / "videoworld2" / "robot_idm" / "eval" / "eval_offline_idm.py",
+            repo_root / "videoworld2" / "robot_idm" / "eval" / "eval_ablation.py",
+            repo_root / "videoworld2" / "robot_idm" / "train" / "train_idm.py",
+            repo_root / "videoworld2" / "robot_idm" / "train" / "distill_policy.py",
+        ]
+        forbidden = 'Path(cfg["_meta"]["config_path"]).parent /'
+
+        for path in files:
+            self.assertNotIn(forbidden, path.read_text(encoding="utf-8"), msg=str(path))
+
+    def test_explicit_resume_path_must_exist_and_be_locally_addressable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            checkpoint_dir = root / "checkpoints"
+            checkpoint_dir.mkdir()
+            torch.save({"epoch": 1}, checkpoint_dir / "last.pt")
+
+            with self.assertRaisesRegex(FileNotFoundError, "Explicit resume checkpoint not found"):
+                find_resume_path(root, explicit=str(root / "missing.pt"))
+
+        if not Path("/remote/last.pt").is_absolute():
+            with self.assertRaisesRegex(ValueError, "POSIX absolute path"):
+                find_resume_path(root, explicit="/remote/last.pt")
+
+    def test_cli_checkpoint_paths_are_guarded_before_torch_load(self) -> None:
+        if Path("/remote/best.pt").is_absolute():
+            self.skipTest("POSIX paths are native absolute paths on this platform")
+
+        with self.assertRaisesRegex(ValueError, "POSIX absolute path"):
+            load_checkpoint("/remote/best.pt")
 
     def test_window_index_rejects_episode_file_change(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -448,6 +519,42 @@ class RobotIDMTests(unittest.TestCase):
             )
 
             with self.assertRaisesRegex(ValueError, "duplicate episode ids"):
+                validate_manifest_pair(train_manifest, val_manifest)
+
+    def test_manifest_pair_rejects_shared_file_source_across_splits(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            shared_episode = root / "shared.pt"
+            _make_episode(shared_episode, "shared")
+            train_manifest = root / "train_manifest.json"
+            val_manifest = root / "val_manifest.json"
+            save_json({"episodes": [{"episode_id": "train_0", "path": "shared.pt"}]}, train_manifest)
+            save_json({"episodes": [{"episode_id": "val_0", "path": str(shared_episode)}]}, val_manifest)
+
+            with self.assertRaisesRegex(ValueError, "share episode source files"):
+                validate_manifest_pair(train_manifest, val_manifest)
+
+    def test_manifest_pair_rejects_duplicate_file_source_within_split(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            shared_episode = root / "shared.pt"
+            val_episode = root / "val.pt"
+            _make_episode(shared_episode, "shared")
+            _make_episode(val_episode, "val_0")
+            train_manifest = root / "train_manifest.json"
+            val_manifest = root / "val_manifest.json"
+            save_json(
+                {
+                    "episodes": [
+                        {"episode_id": "train_0", "path": "shared.pt"},
+                        {"episode_id": "train_1", "path": str(shared_episode)},
+                    ]
+                },
+                train_manifest,
+            )
+            save_json({"episodes": [{"episode_id": "val_0", "path": str(val_episode)}]}, val_manifest)
+
+            with self.assertRaisesRegex(ValueError, "duplicate episode source files"):
                 validate_manifest_pair(train_manifest, val_manifest)
 
     def test_ensure_code_caches_validates_existing_cache_even_if_other_split_missing(self) -> None:

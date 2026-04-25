@@ -120,30 +120,32 @@ python -m videoworld2.robot_idm.eval.eval_offline_idm configs/vw2_idm/exp_gt_cod
   is still mock-only in this snapshot. A real CALVIN closed-loop evaluator was requested later and is not implemented here yet.
 - `videoworld2/robot_idm/eval/eval_offline_idm.py`
   includes the planner-load guard so GT-code runs do not incorrectly require a planner checkpoint.
+- Cache metadata now fingerprints every CALVIN frame in each manifest span, and manifest validation rejects shared file-backed episode sources across train/val splits.
+- Explicit resume and standalone evaluation checkpoint paths are guarded before loading, including Windows rejection of unremapped POSIX remote paths.
 
 ## Results
 
 ### Phase 0 smoke gate
 
-| Check | Result |
-| --- | --- |
-| Oracle replay | `100%` success on 24 validation episodes |
-| BC overfit closed loop | `33.33%` success, offline MSE `0.00283` |
-| History-IDM GT-code overfit closed loop | `16.67%` success, offline MSE `0.00346` |
+| Check | Result | Interpretation |
+| --- | --- | --- |
+| Oracle replay | `100%` success on 24 validation episodes | synthetic mock oracle diagnostic |
+| BC overfit closed loop | `33.33%` success, offline MSE `0.00283` | synthetic mock smoke policy |
+| History-IDM GT-code overfit closed loop | `16.67%` success, offline MSE `0.00346` | privileged future-code mock diagnostic |
 
 Sanitized summaries are committed in [`results/phase0_summaries.json`](results/phase0_summaries.json), with mock-only provenance in [`results/phase0_rollout_metadata.json`](results/phase0_rollout_metadata.json).
 
 ### Phase 1 offline CALVIN gate
 
-These committed numbers are the recovered post-fix offline summary from the rescued Phase 1 run. They replace the earlier stale table, but they are not a fresh local regeneration under the current stricter cache/tokenizer guards because the raw CALVIN files and a complete official tokenizer checkpoint are not available in this checkout.
+These committed numbers are the recovered offline summary from the rescued Phase 1 run. They replace the earlier stale table, but they are not a fresh local regeneration under the current stricter cache/tokenizer guards because the raw CALVIN files and a complete official tokenizer checkpoint are not available in this checkout.
 
-| Controller | Action NLL | Action MSE | Jerk |
-| --- | ---: | ---: | ---: |
-| `VW2_hidden_mlp_action_head` | `0.02332` | `0.17899` | `0.00356026` |
-| `History_IDM_GTcode` | `0.90677` | `0.17816` | `0.00000010` |
-| `BC_vis` | `1.59221` | `0.18078` | `0.00000014` |
-| `BC_vis_proprio` | `1.38503` | `0.19142` | `0.00000064` |
-| `Pair_IDM_GTcode` | `1.38689` | `0.18394` | `0.00000206` |
+| Controller | Action NLL | Action MSE | Jerk | Interpretation |
+| --- | ---: | ---: | ---: | --- |
+| `VW2_hidden_mlp_action_head` | `0.02332` | `0.17899` | `0.00356026` | deployable direct MLP policy |
+| `History_IDM_GTcode` | `0.90677` | `0.17816` | `0.00000010` | privileged GT-code upper bound |
+| `BC_vis` | `1.59221` | `0.18078` | `0.00000014` | deployable direct visual policy |
+| `BC_vis_proprio` | `1.38503` | `0.19142` | `0.00000064` | deployable direct visual+proprio policy |
+| `Pair_IDM_GTcode` | `1.38689` | `0.18394` | `0.00000206` | privileged GT-code upper bound |
 
 Machine-readable metrics are committed in:
 
@@ -153,6 +155,7 @@ Machine-readable metrics are committed in:
 - [`results/phase1_result_provenance.json`](results/phase1_result_provenance.json)
 
 `History_IDM_GTcode` and `Pair_IDM_GTcode` use ground-truth future latent codes from the target trajectory. They are privileged upper-bound checks, not deployable closed-loop policies.
+The JSON and CSV metrics files duplicate the privilege/deployability flags so a single-file consumer does not need to join companion metadata before filtering deployable rows.
 
 ### Current decision status
 

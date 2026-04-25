@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -45,11 +46,19 @@ def validate_manifest_pair(train_manifest: str | Path, val_manifest: str | Path)
     val_entries = load_json(val_path).get("episodes", [])
     _validate_unique_episode_ids(train_entries, "train")
     _validate_unique_episode_ids(val_entries, "val")
+    _validate_unique_episode_sources(train_entries, "train", train_path.parent)
+    _validate_unique_episode_sources(val_entries, "val", val_path.parent)
     train_ids = {entry.get("episode_id") for entry in train_entries}
     val_ids = {entry.get("episode_id") for entry in val_entries}
     overlap_ids = sorted(train_ids & val_ids)
     if overlap_ids:
         raise ValueError(f"Train/val manifests share episode ids: {overlap_ids[:5]}")
+
+    train_files = _manifest_files(train_entries, train_path.parent)
+    val_files = _manifest_files(val_entries, val_path.parent)
+    overlap_files = sorted(set(train_files) & set(val_files))
+    if overlap_files:
+        raise ValueError(f"Train/val manifests share episode source files: {overlap_files[:5]}")
 
     train_spans = _manifest_spans(train_entries, train_path.parent)
     val_spans = _manifest_spans(val_entries, val_path.parent)
@@ -72,6 +81,16 @@ def _validate_unique_episode_ids(entries: list[dict[str, Any]], split: str) -> N
         raise ValueError(f"{split} manifest has duplicate episode ids: {duplicates[:5]}")
 
 
+def _normalise_manifest_file(path_value: Any, manifest_dir: Path) -> str:
+    raw_path = str(path_value)
+    path = Path(raw_path).expanduser()
+    if raw_path.startswith("/") and not path.is_absolute():
+        return path.as_posix()
+    if path.is_absolute():
+        return path.resolve(strict=False).as_posix()
+    return (manifest_dir / path).resolve(strict=False).as_posix()
+
+
 def _normalise_manifest_root(root_value: Any, manifest_dir: Path) -> str:
     raw_root = str(root_value)
     root_path = Path(raw_root).expanduser()
@@ -82,6 +101,10 @@ def _normalise_manifest_root(root_value: Any, manifest_dir: Path) -> str:
     return (manifest_dir / root_path).resolve(strict=False).as_posix()
 
 
+def _manifest_files(entries: list[dict[str, Any]], manifest_dir: Path) -> list[str]:
+    return [_normalise_manifest_file(entry["path"], manifest_dir) for entry in entries if "path" in entry]
+
+
 def _manifest_spans(entries: list[dict[str, Any]], manifest_dir: Path) -> dict[str, list[tuple[int, int]]]:
     spans: dict[str, list[tuple[int, int]]] = {}
     for entry in entries:
@@ -90,6 +113,25 @@ def _manifest_spans(entries: list[dict[str, Any]], manifest_dir: Path) -> dict[s
         root = _normalise_manifest_root(entry["root"], manifest_dir)
         spans.setdefault(root, []).append((int(entry["start"]), int(entry["end"])))
     return spans
+
+
+def _validate_unique_episode_sources(entries: list[dict[str, Any]], split: str, manifest_dir: Path) -> None:
+    files = _manifest_files(entries, manifest_dir)
+    duplicate_files = sorted(path for path, count in Counter(files).items() if count > 1)
+    if duplicate_files:
+        raise ValueError(f"{split} manifest has duplicate episode source files: {duplicate_files[:5]}")
+
+    spans = _manifest_spans(entries, manifest_dir)
+    for root, ranges in spans.items():
+        ordered = sorted(ranges)
+        for idx in range(1, len(ordered)):
+            previous_start, previous_end = ordered[idx - 1]
+            start, end = ordered[idx]
+            if start <= previous_end:
+                raise ValueError(
+                    f"{split} manifest has overlapping episode source spans on {root}: "
+                    f"{previous_start}-{previous_end} and {start}-{end}"
+                )
 
 
 def build_adapter(cfg: dict[str, Any]) -> DLDMLocalAdapter:

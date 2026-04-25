@@ -7,7 +7,8 @@
       "results/phase1_offline_metrics.json",
       "results/phase1_offline_metrics.csv"
     ],
-    "status": "committed post-fix offline summary from the rescued Phase 1 run",
+    "status": "committed offline summary recovered from the rescued Phase 1 run",
+    "single_file_safety": "metrics JSON/CSV duplicate privileged_future_codes, deployable_without_future_labels, conditioning, and result_role flags",
     "not_a_real_calvin_closed_loop_verdict": true,
     "fresh_local_regeneration_blocked": true,
     "blockers": [

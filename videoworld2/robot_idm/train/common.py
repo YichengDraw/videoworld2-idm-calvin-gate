@@ -9,6 +9,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from videoworld2.robot_idm.data.collate import robot_idm_collate
+from videoworld2.robot_idm.models.dldm_local_adapter import _resolve_path_from_config_dir
 from videoworld2.robot_idm.utils.checkpoint import find_resume_path, load_checkpoint
 from videoworld2.robot_idm.utils.config import dump_config
 from videoworld2.robot_idm.utils.factory import build_train_val_datasets
@@ -55,9 +56,8 @@ def _adapter_cache_metadata(cfg: dict[str, Any], adapter) -> dict[str, Any]:
     }
     checkpoint_path = adapter_cfg.get("checkpoint_path")
     if checkpoint_path:
-        checkpoint = Path(checkpoint_path).expanduser()
         config_dir = Path(adapter_cfg.get("_config_dir") or Path(cfg["_meta"]["config_path"]).parent)
-        resolved = checkpoint if checkpoint.is_absolute() else (config_dir / checkpoint).resolve()
+        resolved = _resolve_path_from_config_dir(checkpoint_path, config_dir)
         metadata["adapter_checkpoint"] = str(resolved)
         if resolved.exists():
             stat = resolved.stat()
@@ -120,8 +120,11 @@ def _manifest_source_fingerprint(manifest_payload: dict[str, Any], manifest_dir:
             item["file"] = _file_fingerprint(entry["path"], base_dir=manifest_dir)
         if {"root", "start", "end"} <= set(entry):
             root = _normalise_manifest_path(entry["root"], base_dir=manifest_dir)
-            item["first_frame"] = _file_fingerprint(_join_manifest_path(root, f"episode_{int(entry['start']):07d}.npz"))
-            item["last_frame"] = _file_fingerprint(_join_manifest_path(root, f"episode_{int(entry['end']):07d}.npz"))
+            item["frame_range"] = [int(entry["start"]), int(entry["end"])]
+            item["frames"] = [
+                _file_fingerprint(_join_manifest_path(root, f"episode_{frame_idx:07d}.npz"))
+                for frame_idx in range(int(entry["start"]), int(entry["end"]) + 1)
+            ]
         fingerprints.append(item)
     return fingerprints
 

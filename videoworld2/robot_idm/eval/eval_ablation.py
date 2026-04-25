@@ -5,6 +5,7 @@ from pathlib import Path
 
 from videoworld2.robot_idm.eval.eval_closed_loop import evaluate_closed_loop
 from videoworld2.robot_idm.eval.eval_offline_idm import evaluate_offline
+from videoworld2.robot_idm.train.common import resolve_config_path
 from videoworld2.robot_idm.utils.config import load_config
 from videoworld2.robot_idm.utils.runtime import resolve_device, save_json
 
@@ -72,18 +73,13 @@ def main() -> None:
 
     cfg = load_config(args.config)
     device = resolve_device(args.device)
-    config_dir = Path(cfg["_meta"]["config_path"]).parent
     results = []
     for experiment in cfg["ablation"]["experiments"]:
-        exp_config_path = Path(experiment["config"])
-        if not exp_config_path.is_absolute():
-            exp_config_path = (config_dir / exp_config_path).resolve()
+        exp_config_path = resolve_config_path(cfg, experiment["config"])
         exp_cfg = load_config(exp_config_path)
-        checkpoint_path = Path(experiment["checkpoint"])
-        if not checkpoint_path.is_absolute():
-            checkpoint_path = (config_dir / checkpoint_path).resolve()
-        if "checkpoint" in experiment:
-            exp_cfg["idm"]["planner_checkpoint"] = experiment.get("planner_checkpoint", exp_cfg.get("idm", {}).get("planner_checkpoint"))
+        checkpoint_path = resolve_config_path(cfg, experiment["checkpoint"])
+        if "planner_checkpoint" in experiment:
+            exp_cfg["idm"]["planner_checkpoint"] = str(resolve_config_path(cfg, experiment["planner_checkpoint"]))
         offline = evaluate_offline(exp_cfg, checkpoint_path=str(checkpoint_path), device=device)
         closed_loop = evaluate_closed_loop(exp_cfg, checkpoint_path=str(checkpoint_path), device=device)
         results.append(
@@ -97,12 +93,12 @@ def main() -> None:
 
     output_json = Path(cfg["ablation"]["output_json"])
     if not output_json.is_absolute():
-        output_json = (Path(cfg["_meta"]["config_path"]).parent / output_json).resolve()
+        output_json = resolve_config_path(cfg, cfg["ablation"]["output_json"])
     save_json({"results": results}, output_json)
 
     report_path = Path(cfg["ablation"]["report_path"])
     if not report_path.is_absolute():
-        report_path = (Path(cfg["_meta"]["config_path"]).parent / report_path).resolve()
+        report_path = resolve_config_path(cfg, cfg["ablation"]["report_path"])
     render_report(results, report_path)
 
 

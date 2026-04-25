@@ -19,22 +19,22 @@ The current repository supports an offline CALVIN gate and a mock-only closed-lo
 
 \begin{itemize}
   \item The latent planner now uses a causal decoder mask, preventing teacher-forced target tokens from leaking future labels into earlier predictions.
-  \item Latent caches and window indexes now carry validation metadata and fail on stale specs, stale adapter identity, stale split identity, duplicate cache keys, or key-set mismatch.
+  \item Latent caches and window indexes now carry validation metadata and fail on stale specs, stale adapter identity, stale split identity, stale CALVIN frame provenance, duplicate cache keys, or key-set mismatch.
   \item Official dLDM tokenizer checkpoints are rejected unless they cover the encode path used for cache extraction and predicted-code embeddings.
-  \item CALVIN train and validation manifests are checked for shared episode IDs and overlapping frame spans before dataset construction.
+  \item Train and validation manifests are checked for shared episode IDs, shared file-backed episode sources, and overlapping CALVIN frame spans before dataset construction.
   \item DataLoader workers and generators are seeded from the experiment seed, and training/evaluation entrypoints request deterministic CUDA behavior by default.
-  \item Direct-policy and MLP checkpoints are validated against the evaluation config before loading. MLP configs fail clearly when evaluated against non-direct checkpoints.
+  \item Direct-policy, MLP, planner, verifier, teacher, resume, and CLI checkpoints are validated against explicit architecture and path guards before loading.
 \end{itemize}
 
 \section*{Phase 1 Offline CALVIN Metrics}
 
-The table below is the committed post-fix offline summary recovered from the rescued Phase 1 run. It is not a fresh local regeneration under the current stricter cache/tokenizer guards because raw CALVIN frame/action files and a complete official tokenizer checkpoint are not available in this checkout.
+The table below is the committed offline summary recovered from the rescued Phase 1 run. It is not a fresh local regeneration under the current stricter cache/tokenizer guards because raw CALVIN frame/action files and a complete official tokenizer checkpoint are not available in this checkout.
 
 \begin{center}
 \begingroup
 \small
 \setlength{\tabcolsep}{4pt}
-\begin{tabular}{p{0.30\linewidth}rrrp{0.25\linewidth}}
+\begin{tabular}{>{\raggedright\arraybackslash}p{0.30\linewidth}rrr>{\raggedright\arraybackslash}p{0.25\linewidth}}
 \hline
 Controller & Action NLL & Action MSE & Jerk & Interpretation \\
 \hline
@@ -53,18 +53,22 @@ The GT-code rows consume future latent codes from the target trajectory. They ar
 \section*{Phase 0 Mock Smoke}
 
 \begin{center}
-\begin{tabular}{lr}
+\begingroup
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{>{\raggedright\arraybackslash}p{0.30\linewidth}>{\raggedright\arraybackslash}p{0.24\linewidth}>{\raggedright\arraybackslash}p{0.34\linewidth}}
 \hline
-Check & Result \\
+Check & Result & Interpretation \\
 \hline
-Oracle replay & 100\% success on 24 validation episodes \\
-BC overfit closed loop & 33.33\% success, offline MSE 0.00283 \\
-History-IDM GT-code overfit closed loop & 16.67\% success, offline MSE 0.00346 \\
+Oracle replay & 100\% success on 24 validation episodes & synthetic mock oracle diagnostic \\
+BC overfit closed loop & 33.33\% success, offline MSE 0.00283 & synthetic mock smoke policy \\
+History-IDM GT-code overfit closed loop & 16.67\% success, offline MSE 0.00346 & privileged future-code mock diagnostic \\
 \hline
 \end{tabular}
+\endgroup
 \end{center}
 
-These smoke runs validate plumbing on a synthetic mock environment. They do not prove real CALVIN closed-loop behavior. The repository also includes machine-readable mock-only rollout provenance in \texttt{results/phase0\_rollout\_metadata.json}.
+These smoke runs validate plumbing on a synthetic mock environment. They do not prove real CALVIN closed-loop behavior. The repository also includes machine-readable mock-only rollout provenance in \texttt{results/phase0\_rollout\_metadata.json}; the public summary JSON duplicates the GT-code privilege flag inside the affected rows.
 
 \section*{Artifact Boundary}
 

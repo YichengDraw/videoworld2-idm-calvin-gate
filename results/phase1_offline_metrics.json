@@ -3,30 +3,50 @@
     "action_nll": 1.5922118127346039,
     "action_mse": 0.1807790226303041,
     "jerk": 1.379149270341884e-07,
-    "planner_code_accuracy": 0.0
+    "planner_code_accuracy": 0.0,
+    "privileged_future_codes": false,
+    "deployable_without_future_labels": true,
+    "conditioning": "direct_policy",
+    "result_role": "deployable_policy"
   },
   "bc_vis_proprio": {
     "action_nll": 1.3850337527692318,
     "action_mse": 0.19142329040914774,
     "jerk": 6.409826678321906e-07,
-    "planner_code_accuracy": 0.0
+    "planner_code_accuracy": 0.0,
+    "privileged_future_codes": false,
+    "deployable_without_future_labels": true,
+    "conditioning": "direct_policy",
+    "result_role": "deployable_policy"
   },
   "pair_idm_gtcode": {
     "action_nll": 1.3868949189782143,
     "action_mse": 0.1839401382021606,
     "jerk": 2.0567617298183904e-06,
-    "planner_code_accuracy": 0.0
+    "planner_code_accuracy": 0.0,
+    "privileged_future_codes": true,
+    "deployable_without_future_labels": false,
+    "conditioning": "ground_truth_future_codes",
+    "result_role": "privileged_upper_bound"
   },
   "history_idm_gtcode": {
     "action_nll": 0.9067741520702839,
     "action_mse": 0.1781598892994225,
     "jerk": 1.0351683399356659e-07,
-    "planner_code_accuracy": 0.0
+    "planner_code_accuracy": 0.0,
+    "privileged_future_codes": true,
+    "deployable_without_future_labels": false,
+    "conditioning": "ground_truth_future_codes",
+    "result_role": "privileged_upper_bound"
   },
   "vw2_hidden_mlp_action_head": {
     "action_nll": 0.023315516649745405,
     "action_mse": 0.1789883659221232,
     "jerk": 0.003560257246135734,
-    "planner_code_accuracy": 0.0
+    "planner_code_accuracy": 0.0,
+    "privileged_future_codes": false,
+    "deployable_without_future_labels": true,
+    "conditioning": "direct_mlp_policy",
+    "result_role": "deployable_policy"
   }
 }
