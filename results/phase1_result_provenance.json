@@ -12,6 +12,9 @@
     "single_file_safety": "metrics JSON/CSV duplicate privileged_future_codes, deployable_without_future_labels, conditioning, result_role, real_calvin_closed_loop, fresh_local_regeneration_blocked, and metric_origin flags",
     "planner_code_accuracy": "null/blank means no predicted-code planner was evaluated for that controller",
     "validation_window_basis": "configured annotation-window subset: 1024 validation latent-cache records from a 12881-window validation index",
+    "action_metric_basis": "action_nll and action_mse are raw-vector losses over the stored CALVIN action representation; no standalone action normalizer was recovered",
+    "jerk_metric_basis": "offline jerk is computed on the full predicted action chunk, not on a real closed-loop executed action stream",
+    "future_planner_accuracy_note": "planner training accuracy is teacher-forced; predicted-code evaluation accuracy must be labeled separately as autoregressive sample accuracy",
     "not_a_real_calvin_closed_loop_verdict": true,
     "fresh_local_regeneration_blocked": true,
     "blockers": [

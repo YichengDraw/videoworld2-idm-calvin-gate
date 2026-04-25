@@ -134,11 +134,12 @@ python -m videoworld2.robot_idm.eval.eval_offline_idm configs/vw2_idm/exp_gt_cod
 | BC overfit closed loop | `33.33%` success, offline MSE `0.00283` | synthetic mock smoke policy |
 | History-IDM GT-code overfit closed loop | `16.67%` success, offline MSE `0.00346` | privileged future-code mock diagnostic |
 
-Sanitized summaries are committed in [`results/phase0_summaries.json`](results/phase0_summaries.json), with mock-only provenance in [`results/phase0_rollout_metadata.json`](results/phase0_rollout_metadata.json).
+Sanitized summaries are committed in [`results/phase0_summaries.json`](results/phase0_summaries.json), with mock-only provenance in [`results/phase0_rollout_metadata.json`](results/phase0_rollout_metadata.json). Phase 0 rows also use `planner_code_accuracy: null` when no predicted-code planner was evaluated.
 
 ### Phase 1 offline CALVIN gate
 
 These committed numbers are regenerated from the `offline_eval.json` files in the non-versioned rescued Phase 1 bundle. They are annotation-window-weighted metrics over the configured 1,024-record validation latent-cache subset, not a full 12,881-window validation replay. They are not a fresh local regeneration under the current stricter cache/tokenizer guards because the raw CALVIN files and a complete official tokenizer checkpoint are not available in this checkout.
+`Action NLL` and `Action MSE` are raw-vector losses over the stored CALVIN action representation; no standalone action normalizer was recovered. `Jerk` is computed on the full predicted action chunk in offline eval, not on a real closed-loop executed action stream.
 
 | Controller | Action NLL | Action MSE | Jerk | Interpretation |
 | --- | ---: | ---: | ---: | --- |
@@ -164,6 +165,8 @@ Regenerate the committed Phase 1 values, table schema, and provenance flags from
 python scripts/package_phase1_results.py --rescued-models-dir path/to/vw2_rescue_20260411/models
 python scripts/audit_rescued_artifacts.py --rescue-root path/to/vw2_rescue_20260411
 ```
+
+`package_phase1_results.py` checks the rescued `offline_eval.json` SHA256 hashes against [`results/rescued_artifact_audit.json`](results/rescued_artifact_audit.json) by default; use `--allow-unaudited-rescue` only for diagnostic, non-public packaging.
 
 ### Current decision status
 

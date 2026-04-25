@@ -10,6 +10,10 @@ from videoworld2.robot_idm.utils.config import load_config
 from videoworld2.robot_idm.utils.runtime import resolve_device, save_json
 
 
+def _fmt_optional_metric(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.4f}"
+
+
 def render_report(results: list[dict], report_path: Path) -> None:
     gt_success = None
     predicted_success = None
@@ -35,7 +39,7 @@ def render_report(results: list[dict], report_path: Path) -> None:
         closed = item["closed_loop"]
         lines.append(
             f"| {item['label']} | {offline['action_nll']:.4f} | {offline['action_mse']:.4f} | {closed['rollout_success']:.4f} | "
-            f"{closed['jerk']:.4f} | {closed.get('planner_code_accuracy', 0.0):.4f} |"
+            f"{closed['jerk']:.4f} | {_fmt_optional_metric(closed.get('planner_code_accuracy'))} |"
         )
     lines.extend(
         [

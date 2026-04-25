@@ -1165,6 +1165,47 @@ class RobotIDMTests(unittest.TestCase):
 
         self.assertIsNone(packaged["direct"]["planner_code_accuracy"])
 
+    def test_phase1_packaging_rejects_rescue_hash_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            models_dir = root / "models"
+            for rel_path in package_phase1_results.RESCUED_OFFLINE_EVALS.values():
+                output_path = models_dir / rel_path
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                save_json(
+                    {
+                        "action_nll": 1.0,
+                        "action_mse": 2.0,
+                        "jerk": 3.0,
+                        "planner_code_accuracy": 0.0,
+                    },
+                    output_path,
+                )
+            audit_json = root / "audit.json"
+            save_json(
+                {
+                    "source_files": [
+                        {"path": f"models/{rel_path}", "sha256": "0" * 64}
+                        for rel_path in package_phase1_results.RESCUED_OFFLINE_EVALS.values()
+                    ]
+                },
+                audit_json,
+            )
+
+            with self.assertRaisesRegex(ValueError, "hash mismatch"):
+                package_phase1_results.load_rescued_offline_metrics(models_dir, audit_json=audit_json)
+
+    def test_committed_non_planner_metrics_use_null_accuracy(self) -> None:
+        phase0 = load_json("results/phase0_summaries.json")
+        phase1 = load_json("results/phase1_offline_metrics.json")
+
+        for row in phase1.values():
+            self.assertIsNone(row["planner_code_accuracy"])
+        for row in phase0.values():
+            for section in ("offline", "closed_loop"):
+                if section in row and "planner_code_accuracy" in row[section]:
+                    self.assertIsNone(row[section]["planner_code_accuracy"])
+
     def test_mlp_eval_config_rejects_non_direct_checkpoint(self) -> None:
         from videoworld2.robot_idm.eval.eval_offline_idm import load_policy_bundle
 

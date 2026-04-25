@@ -30,7 +30,7 @@ The current repository supports an offline CALVIN gate and a mock-only closed-lo
 
 \section*{Phase 1 Offline CALVIN Metrics}
 
-The table below is regenerated from the \texttt{offline\_eval.json} files in the non-versioned rescued Phase 1 bundle. It is an annotation-window-weighted result over the configured 1,024-record validation latent-cache subset, not a full 12,881-window validation replay. It is not a fresh local regeneration under the current stricter cache/tokenizer guards because raw CALVIN frame/action files and a complete official tokenizer checkpoint are not available in this checkout.
+The table below is regenerated from the \texttt{offline\_eval.json} files in the non-versioned rescued Phase 1 bundle. It is an annotation-window-weighted result over the configured 1,024-record validation latent-cache subset, not a full 12,881-window validation replay. It is not a fresh local regeneration under the current stricter cache/tokenizer guards because raw CALVIN frame/action files and a complete official tokenizer checkpoint are not available in this checkout. Action NLL and action MSE are raw-vector losses over the stored CALVIN action representation; no standalone action normalizer was recovered. Offline jerk is computed on the full predicted action chunk, not on a real closed-loop executed action stream.
 
 \begin{center}
 \begingroup
@@ -70,7 +70,7 @@ History-IDM GT-code overfit closed loop & 16.67\% success, offline MSE 0.00346 &
 \endgroup
 \end{center}
 
-These smoke runs validate plumbing on a synthetic mock environment. They do not prove real CALVIN closed-loop behavior. The repository also includes machine-readable mock-only rollout provenance in \texttt{results/phase0\_rollout\_metadata.json}; the public summary JSON duplicates the GT-code privilege flag inside the affected rows.
+These smoke runs validate plumbing on a synthetic mock environment. They do not prove real CALVIN closed-loop behavior. The repository also includes machine-readable mock-only rollout provenance in \texttt{results/phase0\_rollout\_metadata.json}; the public summary JSON duplicates the GT-code privilege flag inside the affected rows and leaves planner-code accuracy null when no predicted-code planner is evaluated.
 
 \section*{Artifact Boundary}
 

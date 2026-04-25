@@ -35,7 +35,7 @@ def _oracle_future_clip(sample: dict[str, Any], horizon: int) -> torch.Tensor:
 
 
 @torch.no_grad()
-def evaluate_closed_loop(cfg: dict[str, Any], checkpoint_path: str, device: torch.device | None = None) -> dict[str, float]:
+def evaluate_closed_loop(cfg: dict[str, Any], checkpoint_path: str, device: torch.device | None = None) -> dict[str, float | None]:
     if cfg["data"].get("dataset_type") != "mock":
         raise ValueError("Closed-loop evaluation currently requires dataset_type=mock.")
     configure_determinism(int(cfg["training"].get("seed", 7)), deterministic=bool(cfg.get("evaluation", {}).get("deterministic", True)))
@@ -147,7 +147,7 @@ def evaluate_closed_loop(cfg: dict[str, Any], checkpoint_path: str, device: torc
     metrics = {
         "rollout_success": sum(successes) / max(len(successes), 1),
         "jerk": sum(jerk_scores) / max(len(jerk_scores), 1),
-        "planner_code_accuracy": sum(planner_acc) / max(len(planner_acc), 1) if planner_acc else 0.0,
+        "planner_code_accuracy": sum(planner_acc) / len(planner_acc) if planner_acc else None,
     }
     return metrics
 

@@ -154,7 +154,7 @@ def collect_debug_stats(
         "clip_fraction": clip_count / max(clip_total, 1),
         "mean_progress_per_step": mean_progress,
         "rollout_success": sum(successes) / max(len(successes), 1),
-        "planner_code_accuracy": sum(planner_acc) / max(len(planner_acc), 1) if planner_acc else 0.0,
+        "planner_code_accuracy": sum(planner_acc) / len(planner_acc) if planner_acc else None,
     }
 
 
@@ -221,7 +221,7 @@ def main() -> None:
             "first_action_mse": round(float(stats["first_action_mse"]), 6),
             "clip_fraction": round(float(stats["clip_fraction"]), 6),
             "rollout_success": round(float(stats["rollout_success"]), 4),
-            "planner_code_accuracy": round(float(stats["planner_code_accuracy"]), 4),
+            "planner_code_accuracy": "n/a" if stats["planner_code_accuracy"] is None else round(float(stats["planner_code_accuracy"]), 4),
         }
     )
     if args.output_json:
