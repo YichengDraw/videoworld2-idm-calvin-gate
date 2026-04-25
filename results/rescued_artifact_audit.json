@@ -1,0 +1,92 @@
+{
+  "source_bundle": "vw2_rescue_20260411",
+  "manifest_pair_validation": "passed",
+  "window_spec": {
+    "history_frames": 4,
+    "past_action_hist": 4,
+    "future_video_horizon": 8,
+    "action_chunk": 8,
+    "stride": 4
+  },
+  "window_rebuild": {
+    "train": {
+      "manifest_episodes": 166,
+      "expected_windows": 2102,
+      "rescued_windows": 2102,
+      "payload_matches_current_builder": true,
+      "same_root_within_split_overlap_pairs": 20
+    },
+    "val": {
+      "manifest_episodes": 1024,
+      "expected_windows": 12881,
+      "rescued_windows": 12881,
+      "payload_matches_current_builder": true,
+      "same_root_within_split_overlap_pairs": 8383
+    }
+  },
+  "latent_cache": {
+    "train_records": 2102,
+    "val_records": 1024,
+    "configured_limit_train_windows": 8192,
+    "configured_limit_val_windows": 1024,
+    "val_cache_is_configured_subset_of_full_val_index": true
+  },
+  "interpretation_boundary": "The recovered offline metrics are annotation-window-weighted values over the configured latent-cache subset. Same-root within-split span overlaps are treated as CALVIN language-annotation windows, not independent raw-frame claims.",
+  "source_files": [
+    {
+      "path": "datasets/calvin_static/train_manifest.json",
+      "size": 49337,
+      "sha256": "26cffa395eb7d9fe09a13b0ccaaa42ec3c94ee3e7e213c4cedacfd958a248eed"
+    },
+    {
+      "path": "datasets/calvin_static/val_manifest.json",
+      "size": 304640,
+      "sha256": "7862e8045c06e797ecfc35d4a0c2893544fc3adbb77dc00e61aaec58c71c9c32"
+    },
+    {
+      "path": "cache/train_windows.json",
+      "size": 238664,
+      "sha256": "7a8d736fa7b287d947a595ed4f3ea1ce5480cf0466b0aee9cb4cbd0a960a7e7d"
+    },
+    {
+      "path": "cache/val_windows.json",
+      "size": 1487109,
+      "sha256": "7da900974699c115e2de49d70e8276c1238f1b6fdad327e57643bcaa5db5fe83"
+    },
+    {
+      "path": "cache/train_local_codes.pt",
+      "size": 70227198,
+      "sha256": "0c6de11d59a33d1dcc111f2b83a1a6d21d948de19c58ce9bb6eb8ba1aa12b942"
+    },
+    {
+      "path": "cache/val_local_codes.pt",
+      "size": 34206634,
+      "sha256": "fcef8f5302bc0201e1ce006cc362d765d5aaad6826303db069b7991f7cdc5b7d"
+    },
+    {
+      "path": "models/bc_vis_calvin_4090/offline_eval.json",
+      "size": 140,
+      "sha256": "16c490800a365cf684e2082ef6545c9175052a5d7def39b184672f677f1cf150"
+    },
+    {
+      "path": "models/bc_vis_proprio_calvin_4090/offline_eval.json",
+      "size": 140,
+      "sha256": "eba9208193f18aa0d96d30e30c6abea9f0334a01ff6e0f1f02a25d93d6d6341a"
+    },
+    {
+      "path": "models/history_gt_calvin_4090/offline_eval.json",
+      "size": 140,
+      "sha256": "cae3b374bce7082b5615c92730a03fa918d4940455324df38e8af2743076f248"
+    },
+    {
+      "path": "models/pair_idm_calvin_4090/offline_eval.json",
+      "size": 139,
+      "sha256": "fe074bd22155d8fa3410e67e303a047452ddecf7d4cc69461eb418f6b0c8799f"
+    },
+    {
+      "path": "models/vw2_hidden_mlp_action_head_calvin_4090/offline_eval.json",
+      "size": 143,
+      "sha256": "a9bc4c459976047a8b188501e531a5c89c63f836b4a3b291437349ee390e4375"
+    }
+  ]
+}

@@ -138,15 +138,15 @@ Sanitized summaries are committed in [`results/phase0_summaries.json`](results/p
 
 ### Phase 1 offline CALVIN gate
 
-These committed numbers are the recovered offline summary from the rescued Phase 1 run. They replace the earlier stale table, but they are not a fresh local regeneration under the current stricter cache/tokenizer guards because the raw CALVIN files and a complete official tokenizer checkpoint are not available in this checkout.
+These committed numbers are regenerated from the `offline_eval.json` files in the non-versioned rescued Phase 1 bundle. They are annotation-window-weighted metrics over the configured 1,024-record validation latent-cache subset, not a full 12,881-window validation replay. They are not a fresh local regeneration under the current stricter cache/tokenizer guards because the raw CALVIN files and a complete official tokenizer checkpoint are not available in this checkout.
 
 | Controller | Action NLL | Action MSE | Jerk | Interpretation |
 | --- | ---: | ---: | ---: | --- |
-| `VW2_hidden_mlp_action_head` | `0.02332` | `0.17899` | `0.00356026` | deployable direct MLP policy |
-| `History_IDM_GTcode` | `0.90677` | `0.17816` | `0.00000010` | privileged GT-code upper bound |
-| `BC_vis` | `1.59221` | `0.18078` | `0.00000014` | deployable direct visual policy |
-| `BC_vis_proprio` | `1.38503` | `0.19142` | `0.00000064` | deployable direct visual+proprio policy |
-| `Pair_IDM_GTcode` | `1.38689` | `0.18394` | `0.00000206` | privileged GT-code upper bound |
+| `VW2_hidden_mlp_action_head` | `-0.05002` | `0.08925` | `0.00671523` | deployable direct MLP policy |
+| `BC_vis_proprio` | `0.72483` | `0.21353` | `0.00000368` | deployable direct visual+proprio policy |
+| `History_IDM_GTcode` | `0.99295` | `0.15558` | `0.00000764` | privileged GT-code upper bound |
+| `Pair_IDM_GTcode` | `1.01428` | `0.23940` | `0.00000024` | privileged GT-code upper bound |
+| `BC_vis` | `1.23764` | `0.18699` | `0.00000009` | deployable direct visual policy |
 
 Machine-readable metrics are committed in:
 
@@ -154,13 +154,15 @@ Machine-readable metrics are committed in:
 - [`results/phase1_offline_metrics.csv`](results/phase1_offline_metrics.csv)
 - [`results/phase1_controller_metadata.json`](results/phase1_controller_metadata.json)
 - [`results/phase1_result_provenance.json`](results/phase1_result_provenance.json)
+- [`results/rescued_artifact_audit.json`](results/rescued_artifact_audit.json)
 
 `History_IDM_GTcode` and `Pair_IDM_GTcode` use ground-truth future latent codes from the target trajectory. They are privileged upper-bound checks, not deployable closed-loop policies.
-The JSON and CSV metrics files duplicate the privilege/deployability flags so a single-file consumer does not need to join companion metadata before filtering deployable rows.
-Regenerate the committed Phase 1 table schema and provenance flags with:
+The JSON and CSV metrics files duplicate the privilege/deployability flags so a single-file consumer does not need to join companion metadata before filtering deployable rows. `planner_code_accuracy` is `null`/blank for every published Phase 1 row because no predicted-code planner result is published.
+Regenerate the committed Phase 1 values, table schema, and provenance flags from a restored rescue bundle with:
 
 ```bash
-python scripts/package_phase1_results.py
+python scripts/package_phase1_results.py --rescued-models-dir path/to/vw2_rescue_20260411/models
+python scripts/audit_rescued_artifacts.py --rescue-root path/to/vw2_rescue_20260411
 ```
 
 ### Current decision status

@@ -1,6 +1,6 @@
 controller,action_nll,action_mse,jerk,planner_code_accuracy,privileged_future_codes,deployable_without_future_labels,conditioning,result_role,real_calvin_closed_loop,fresh_local_regeneration_blocked,metric_origin
-bc_vis,1.5922118127346039,0.1807790226303041,1.379149270341884e-07,0.0,false,true,direct_policy,deployable_policy,false,true,rescued_offline_summary
-bc_vis_proprio,1.3850337527692318,0.19142329040914774,6.409826678321906e-07,0.0,false,true,direct_policy,deployable_policy,false,true,rescued_offline_summary
-pair_idm_gtcode,1.3868949189782143,0.1839401382021606,2.0567617298183904e-06,0.0,true,false,ground_truth_future_codes,privileged_upper_bound,false,true,rescued_offline_summary
-history_idm_gtcode,0.9067741520702839,0.1781598892994225,1.0351683399356659e-07,0.0,true,false,ground_truth_future_codes,privileged_upper_bound,false,true,rescued_offline_summary
-vw2_hidden_mlp_action_head,0.023315516649745405,0.1789883659221232,0.003560257246135734,0.0,false,true,direct_mlp_policy,deployable_policy,false,true,rescued_offline_summary
+bc_vis,1.2376385247334838,0.18698771484196186,8.826447156495831e-08,,false,true,direct_policy,deployable_policy,false,true,rescued_offline_eval_json
+bc_vis_proprio,0.7248346395790577,0.21352683962322772,3.681667042343406e-06,,false,true,direct_policy,deployable_policy,false,true,rescued_offline_eval_json
+pair_idm_gtcode,1.014280850533396,0.2393955439038109,2.3821688355241122e-07,,true,false,ground_truth_future_codes,privileged_upper_bound,false,true,rescued_offline_eval_json
+history_idm_gtcode,0.9929492361843586,0.15557768195867538,7.638773723783743e-06,,true,false,ground_truth_future_codes,privileged_upper_bound,false,true,rescued_offline_eval_json
+vw2_hidden_mlp_action_head,-0.050021647359244525,0.08924666559323668,0.0067152310512028635,,false,true,direct_mlp_policy,deployable_policy,false,true,rescued_offline_eval_json

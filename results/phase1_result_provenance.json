@@ -1,22 +1,26 @@
 {
   "not_a_real_calvin_closed_loop_verdict": true,
   "fresh_local_regeneration_blocked": true,
-  "safe_interpretation": "offline recovered metrics only; GT-code rows are privileged upper-bound diagnostics; no predicted-code claim is published",
+  "safe_interpretation": "offline_eval.json metrics recovered from the non-versioned rescue bundle as annotation-window-weighted 1024-record validation-subset metrics; GT-code rows are privileged upper-bound diagnostics; no predicted-code claim is published",
   "phase1_offline_metrics": {
     "table_files": [
       "results/phase1_offline_metrics.json",
       "results/phase1_offline_metrics.csv"
     ],
-    "status": "committed offline summary recovered from the rescued Phase 1 run",
+    "artifact_audit_file": "results/rescued_artifact_audit.json",
+    "status": "committed offline_eval.json values recovered from the rescued Phase 1 run",
     "single_file_safety": "metrics JSON/CSV duplicate privileged_future_codes, deployable_without_future_labels, conditioning, result_role, real_calvin_closed_loop, fresh_local_regeneration_blocked, and metric_origin flags",
+    "planner_code_accuracy": "null/blank means no predicted-code planner was evaluated for that controller",
+    "validation_window_basis": "configured annotation-window subset: 1024 validation latent-cache records from a 12881-window validation index",
     "not_a_real_calvin_closed_loop_verdict": true,
     "fresh_local_regeneration_blocked": true,
     "blockers": [
       "raw CALVIN RGB/proprio/action frame files are not committed",
       "rescued manifests reference the original remote Linux roots",
       "the locally observed ldm_tokenizer_training_init_weights.pt does not cover all official tokenizer encode-path parameters",
-      "rescued latent caches predate the current strict metadata guard"
+      "rescued window indexes predate the current strict metadata guard, although their payloads match current window generation",
+      "rescued latent caches predate the current strict metadata guard and cover the configured limited evaluation windows only"
     ],
-    "safe_interpretation": "offline recovered metrics only; GT-code rows are privileged upper-bound diagnostics; no predicted-code claim is published"
+    "safe_interpretation": "offline_eval.json metrics recovered from the non-versioned rescue bundle as annotation-window-weighted 1024-record validation-subset metrics; GT-code rows are privileged upper-bound diagnostics; no predicted-code claim is published"
   }
 }

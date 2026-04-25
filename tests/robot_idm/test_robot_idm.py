@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import io
 import tempfile
 import types
 import unittest
@@ -10,6 +11,7 @@ from unittest import mock
 import numpy as np
 import torch
 
+from scripts import package_phase1_results
 from videoworld2.robot_idm.data.calvin_window_dataset import CalvinWindowDataset, _calvin_frame_fingerprint
 from videoworld2.robot_idm.data.robot_latent_dataset import RobotLatentWindowDataset
 from videoworld2.robot_idm.data.robot_window_dataset import RobotWindowDataset, WindowSpec, _file_fingerprint, build_window_index
@@ -723,6 +725,27 @@ class RobotIDMTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "duplicate episode ids"):
                 validate_manifest_pair(train_manifest, val_manifest)
 
+    def test_manifest_pair_allows_within_split_same_root_overlapping_calvin_spans(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            train_manifest = root / "train_manifest.json"
+            val_manifest = root / "val_manifest.json"
+            save_json(
+                {
+                    "episodes": [
+                        {"episode_id": "train_0", "root": "/data/calvin_train", "start": 10, "end": 20},
+                        {"episode_id": "train_1", "root": "/data/calvin_train", "start": 15, "end": 25},
+                    ]
+                },
+                train_manifest,
+            )
+            save_json(
+                {"episodes": [{"episode_id": "val_0", "root": "/data/calvin_val", "start": 15, "end": 25}]},
+                val_manifest,
+            )
+
+            validate_manifest_pair(train_manifest, val_manifest)
+
     def test_manifest_pair_rejects_shared_file_source_across_splits(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
@@ -1103,6 +1126,44 @@ class RobotIDMTests(unittest.TestCase):
         mlp_model, mlp_key = build_trainable_policy(mlp_cfg, action_dim=2, device=device)
         self.assertNotIsInstance(mlp_model, HistoryAwareIDM)
         self.assertEqual(mlp_key, "direct_policy")
+
+    def test_mlp_config_declares_direct_policy_conditioning(self) -> None:
+        cfg = load_config("configs/vw2_idm/exp_vw2_hidden_mlp_action_head_calvin_4090.yaml")
+        metadata = policy_checkpoint_metadata(cfg, "direct_policy", action_dim=7)
+
+        self.assertEqual(metadata["policy_variant"], "mlp")
+        self.assertEqual(metadata["checkpoint_key"], "direct_policy")
+        self.assertEqual(metadata["idm_conditioning"]["variant"], "bc")
+        self.assertFalse(metadata["idm_conditioning"]["use_future_codes"])
+        self.assertFalse(metadata["idm_conditioning"]["use_past_actions"])
+
+    def test_phase1_packaging_requires_rescued_offline_eval_source(self) -> None:
+        with mock.patch("sys.argv", ["package_phase1_results.py"]), mock.patch("sys.stderr", io.StringIO()):
+            with self.assertRaises(SystemExit) as ctx:
+                package_phase1_results.main()
+
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_phase1_packaging_marks_non_planner_accuracy_not_applicable(self) -> None:
+        metrics = {
+            "direct": {
+                "action_nll": 1.0,
+                "action_mse": 2.0,
+                "jerk": 3.0,
+                "planner_code_accuracy": 0.0,
+            }
+        }
+        metadata = {
+            "direct": {
+                "conditioning": "direct_policy",
+                "privileged_future_codes": False,
+                "deployable_without_future_labels": True,
+            }
+        }
+
+        packaged = package_phase1_results.package_metrics(metrics, metadata, "rescued_offline_eval_json")
+
+        self.assertIsNone(packaged["direct"]["planner_code_accuracy"])
 
     def test_mlp_eval_config_rejects_non_direct_checkpoint(self) -> None:
         from videoworld2.robot_idm.eval.eval_offline_idm import load_policy_bundle

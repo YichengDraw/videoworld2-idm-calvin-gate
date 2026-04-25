@@ -440,18 +440,6 @@ def _validate_unique_episode_sources(entries: list[dict[str, Any]], split: str, 
     duplicate_calvin_frames = _duplicate_calvin_frame_content(entries, manifest_dir)
     if duplicate_calvin_frames:
         raise ValueError(f"{split} manifest has duplicate CALVIN frame contents: {duplicate_calvin_frames[:5]}")
-    spans = _manifest_spans(entries, manifest_dir)
-    for root, ranges in spans.items():
-        ordered = sorted(ranges)
-        for idx in range(1, len(ordered)):
-            previous_start, previous_end = ordered[idx - 1]
-            start, end = ordered[idx]
-            if start <= previous_end:
-                raise ValueError(
-                    f"{split} manifest has overlapping episode source spans on {root}: "
-                    f"{previous_start}-{previous_end} and {start}-{end}"
-                )
-
 
 def build_adapter(cfg: dict[str, Any]) -> DLDMLocalAdapter:
     return DLDMLocalAdapter(cfg["adapter"])

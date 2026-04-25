@@ -20,7 +20,7 @@ from videoworld2.robot_idm.utils.checkpoint import (
 )
 from videoworld2.robot_idm.utils.config import load_config
 from videoworld2.robot_idm.utils.factory import build_direct_policy, build_idm, build_planner, build_state_encoder, build_verifier
-from videoworld2.robot_idm.utils.metrics import action_mse, detach_metrics, discounted_gaussian_nll, jerk_metric
+from videoworld2.robot_idm.utils.metrics import action_mse, discounted_gaussian_nll, jerk_metric
 from videoworld2.robot_idm.utils.runtime import configure_determinism, resolve_device, save_json, to_device
 
 
@@ -95,7 +95,7 @@ def load_policy_bundle(cfg: dict[str, Any], checkpoint_path: str, device: torch.
 
 
 @torch.no_grad()
-def evaluate_offline(cfg: dict[str, Any], checkpoint_path: str, device: torch.device | None = None) -> dict[str, float]:
+def evaluate_offline(cfg: dict[str, Any], checkpoint_path: str, device: torch.device | None = None) -> dict[str, float | None]:
     configure_determinism(int(cfg["training"].get("seed", 7)), deterministic=bool(cfg.get("evaluation", {}).get("deterministic", True)))
     device = device or resolve_device("auto")
     ensure_code_caches(cfg, adapter=DLDMLocalAdapter(cfg["adapter"]).to(device), device=device)
@@ -104,7 +104,9 @@ def evaluate_offline(cfg: dict[str, Any], checkpoint_path: str, device: torch.de
     cfg["data"]["action_dim"] = int(sample_batch["action_chunk"].size(-1))
     adapter, state_encoder, idm, planner_encoder, planner, verifier_encoder, verifier = load_policy_bundle(cfg, checkpoint_path, device)
 
-    totals = {"action_nll": 0.0, "action_mse": 0.0, "jerk": 0.0, "planner_code_accuracy": 0.0}
+    totals = {"action_nll": 0.0, "action_mse": 0.0, "jerk": 0.0}
+    planner_code_accuracy_total = 0.0
+    planner_code_accuracy_count = 0
     count = 0
     use_predicted_codes = cfg.get("idm", {}).get("code_source", "gt") == "predicted"
     if use_predicted_codes and planner is None:
@@ -122,7 +124,8 @@ def evaluate_offline(cfg: dict[str, Any], checkpoint_path: str, device: torch.de
         target_codes = batch["future_codes"]
         if use_predicted_codes and planner is not None:
             predicted_codes = planner.sample(planning_tokens)
-            totals["planner_code_accuracy"] += float((predicted_codes == batch["future_codes"]).float().mean().detach().cpu()) * batch["action_chunk"].size(0)
+            planner_code_accuracy_total += float((predicted_codes == batch["future_codes"]).float().mean().detach().cpu()) * batch["action_chunk"].size(0)
+            planner_code_accuracy_count += batch["action_chunk"].size(0)
             future_embeds = adapter.code_embed(predicted_codes)
             target_codes = predicted_codes
 
@@ -154,7 +157,10 @@ def evaluate_offline(cfg: dict[str, Any], checkpoint_path: str, device: torch.de
         totals["jerk"] += float(jerk.detach().cpu()) * batch_size
         count += batch_size
 
-    metrics = {key: value / max(count, 1) for key, value in totals.items()}
+    metrics: dict[str, float | None] = {key: value / max(count, 1) for key, value in totals.items()}
+    metrics["planner_code_accuracy"] = (
+        planner_code_accuracy_total / planner_code_accuracy_count if planner_code_accuracy_count else None
+    )
     return metrics
 
 
@@ -168,7 +174,7 @@ def main() -> None:
 
     cfg = load_config(args.config)
     metrics = evaluate_offline(cfg, checkpoint_path=args.checkpoint, device=resolve_device(args.device))
-    print(detach_metrics({key: torch.tensor(value) for key, value in metrics.items()}))
+    print({key: (None if value is None else float(value)) for key, value in metrics.items()})
     if args.output_json:
         save_json(metrics, args.output_json)
 

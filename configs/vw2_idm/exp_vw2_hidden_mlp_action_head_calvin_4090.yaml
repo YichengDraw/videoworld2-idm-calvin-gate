@@ -10,6 +10,14 @@ policy:
   hidden_dim: 512
 
 idm:
+  variant: bc
+  use_future_codes: false
+  use_past_actions: false
+  code_source: gt
+  mixed_code_training: false
+  mixed_code_ratio_gt: 0.0
+  mixed_code_ratio_pred: 0.0
+  mixed_code_ratio_noisy: 0.0
   planner_checkpoint: ""
 
 training:

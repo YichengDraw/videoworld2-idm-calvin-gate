@@ -80,7 +80,9 @@ def run_epoch(
 ) -> dict[str, float]:
     state_encoder.train(training)
     idm.train(training)
-    totals = {"action_nll": 0.0, "action_mse": 0.0, "planner_code_accuracy": 0.0}
+    totals = {"action_nll": 0.0, "action_mse": 0.0}
+    planner_code_accuracy_total = 0.0
+    planner_code_accuracy_count = 0
     count = 0
 
     for batch in data_loader:
@@ -120,10 +122,15 @@ def run_epoch(
         batch_size = batch["action_chunk"].size(0)
         totals["action_nll"] += float(nll.detach().cpu()) * batch_size
         totals["action_mse"] += float(mse.detach().cpu()) * batch_size
-        totals["planner_code_accuracy"] += float(planner_metrics.get("planner_code_accuracy", torch.tensor(0.0)).detach().cpu()) * batch_size
+        if "planner_code_accuracy" in planner_metrics:
+            planner_code_accuracy_total += float(planner_metrics["planner_code_accuracy"].detach().cpu()) * batch_size
+            planner_code_accuracy_count += batch_size
         count += batch_size
 
-    return {key: value / max(count, 1) for key, value in totals.items()}
+    metrics = {key: value / max(count, 1) for key, value in totals.items()}
+    if planner_code_accuracy_count:
+        metrics["planner_code_accuracy"] = planner_code_accuracy_total / planner_code_accuracy_count
+    return metrics
 
 
 def main() -> None:
