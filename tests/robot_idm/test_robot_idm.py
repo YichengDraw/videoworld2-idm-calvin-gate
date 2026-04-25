@@ -8,7 +8,8 @@ from unittest import mock
 
 import torch
 
-from videoworld2.robot_idm.data.robot_window_dataset import RobotWindowDataset, WindowSpec, build_window_index
+from videoworld2.robot_idm.data.calvin_window_dataset import CalvinWindowDataset, _calvin_frame_fingerprint
+from videoworld2.robot_idm.data.robot_window_dataset import RobotWindowDataset, WindowSpec, _file_fingerprint, build_window_index
 from videoworld2.robot_idm.models.dldm_local_adapter import DLDMLocalAdapter
 from videoworld2.robot_idm.models.forward_verifier import ForwardVerifier
 from videoworld2.robot_idm.models.inverse_dynamics import HistoryAwareIDM
@@ -18,6 +19,7 @@ from videoworld2.robot_idm.train.train_idm import build_trainable_policy
 from videoworld2.robot_idm.utils.config import load_config
 from videoworld2.robot_idm.utils.factory import validate_manifest_pair
 from videoworld2.robot_idm.utils.latent_cache import LatentCodeCache
+from videoworld2.robot_idm.utils.phase0 import prepare_phase0_overfit_cfg
 from videoworld2.robot_idm.utils.runtime import save_json
 
 
@@ -57,6 +59,55 @@ class RobotIDMTests(unittest.TestCase):
             self.assertEqual(sample["rgb_hist"].shape, (4, 3, 32, 32))
             self.assertEqual(sample["future_clip"].shape, (9, 3, 32, 32))
             self.assertEqual(sample["action_chunk"].shape, (8, 2))
+
+    def test_robot_manifest_relative_episode_path_resolves_from_manifest_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            episode_path = tmp_path / "episode.pt"
+            _make_episode(episode_path, "episode_0")
+            manifest_path = tmp_path / "manifest.json"
+            save_json({"episodes": [{"path": "episode.pt", "episode_id": "episode_0"}]}, manifest_path)
+
+            dataset = RobotWindowDataset(manifest_path=manifest_path, spec=WindowSpec())
+
+            self.assertEqual(Path(dataset.episode_entries[0]["path"]), episode_path.resolve())
+            self.assertEqual(dataset[0]["episode_id"], "episode_0")
+
+    def test_calvin_manifest_relative_root_resolves_from_manifest_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            calvin_root = tmp_path / "calvin"
+            calvin_root.mkdir()
+            manifest_path = tmp_path / "manifest.json"
+            save_json(
+                {"episodes": [{"episode_id": "episode_0", "root": "calvin", "start": 0, "end": 20}]},
+                manifest_path,
+            )
+
+            dataset = CalvinWindowDataset(manifest_path=manifest_path, spec=WindowSpec())
+
+            self.assertEqual(Path(dataset.entry_by_id["episode_0"]["root"]), calvin_root.resolve())
+            self.assertGreater(len(dataset), 0)
+
+    def test_remote_posix_manifest_paths_are_not_rewritten_to_windows_drive(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            manifest_path = tmp_path / "manifest.json"
+            save_json(
+                {"episodes": [{"episode_id": "episode_0", "root": "/remote/calvin", "start": 0, "end": 20}]},
+                manifest_path,
+            )
+
+            dataset = CalvinWindowDataset(manifest_path=manifest_path, spec=WindowSpec())
+            frame = _calvin_frame_fingerprint("/remote/calvin", 0)
+            robot_file = _file_fingerprint("/remote/episode.pt")
+
+            self.assertEqual(dataset.entry_by_id["episode_0"]["root"], "/remote/calvin")
+            self.assertEqual(frame["path"], "/remote/calvin/episode_0000000.npz")
+            self.assertEqual(robot_file["path"], "/remote/episode.pt")
+            if not Path("/remote/calvin").is_absolute():
+                with self.assertRaisesRegex(FileNotFoundError, "POSIX absolute path"):
+                    dataset[0]
 
     def test_window_index_rejects_episode_file_change(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -107,6 +158,26 @@ class RobotIDMTests(unittest.TestCase):
 
             with self.assertRaisesRegex(ValueError, "zero windows"):
                 make_dataloaders(cfg, use_latent_cache=False)
+
+    def test_phase0_overfit_cfg_explicitly_allows_same_train_val_split(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            config_path = root / "configs" / "vw2_idm" / "exp.yaml"
+            config_path.parent.mkdir(parents=True)
+            base_cfg = {
+                "_meta": {"config_path": str(config_path)},
+                "data": {},
+                "idm": {"use_future_codes": False},
+                "training": {},
+            }
+
+            cfg = prepare_phase0_overfit_cfg(base_cfg, run_name="phase0_test", episodes=2, max_epochs=1)
+
+            self.assertFalse(cfg["data"]["validate_split_disjoint"])
+            self.assertEqual(cfg["data"]["train_manifest"], cfg["data"]["val_manifest"])
+            train_loader, val_loader = make_dataloaders(cfg, use_latent_cache=False)
+            self.assertGreater(len(train_loader.dataset), 0)
+            self.assertGreater(len(val_loader.dataset), 0)
 
     def test_mock_adapter_initialization_is_stable(self) -> None:
         torch.manual_seed(123)

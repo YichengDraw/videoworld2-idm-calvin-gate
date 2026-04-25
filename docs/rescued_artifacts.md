@@ -5,6 +5,7 @@ The original remote 4090 run produced checkpoints, latent caches, manifests, and
 These artifacts are intentionally **not committed** to this repository because they are large run outputs rather than source code.
 
 The committed files in `results/` are the public, lightweight post-fix summaries. This inventory is historical artifact provenance for the non-versioned bundle, not the current source of truth for the README tables.
+The current interpretation boundary is also recorded in `results/phase1_result_provenance.json`.
 
 ## Recovered groups
 

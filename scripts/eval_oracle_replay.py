@@ -8,7 +8,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from videoworld2.robot_idm.data.robot_window_dataset import load_episode
+from videoworld2.robot_idm.data.robot_window_dataset import _normalise_manifest_path, load_episode
 from videoworld2.robot_idm.train.common import prepare_mock_data_if_needed, resolve_config_path
 from videoworld2.robot_idm.utils.config import load_config
 from videoworld2.robot_idm.utils.metrics import rollout_success
@@ -28,7 +28,8 @@ def evaluate_oracle_replay(cfg: dict, split: str, max_episodes: int | None = Non
 
     results = []
     for entry in episode_entries:
-        episode = load_episode(entry["path"])
+        episode_path = _normalise_manifest_path(entry["path"], base_dir=manifest_path.parent)
+        episode = load_episode(episode_path)
         initial_position = episode["proprio"][0, :2]
         initial_velocity = episode["proprio"][0, 2:4]
         meta = episode["meta"]

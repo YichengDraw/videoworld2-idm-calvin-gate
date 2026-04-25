@@ -47,7 +47,25 @@ def build_calvin_window_index(episode_entries: list[dict[str, Any]], spec: Windo
     return index
 
 
+def _is_unaddressable_posix_absolute(path_value: str | Path) -> bool:
+    raw_path = str(path_value)
+    return raw_path.startswith("/") and not Path(raw_path).expanduser().is_absolute()
+
+
+def _normalise_calvin_root(root_value: str | Path, manifest_dir: Path) -> str:
+    raw_root = str(root_value)
+    root = Path(raw_root).expanduser()
+    if raw_root.startswith("/") and not root.is_absolute():
+        return root.as_posix()
+    if not root.is_absolute():
+        root = manifest_dir / root
+    return root.resolve(strict=False).as_posix()
+
+
 def _calvin_frame_fingerprint(root_value: str | Path, frame_idx: int) -> dict[str, Any]:
+    if _is_unaddressable_posix_absolute(root_value):
+        frame_name = f"episode_{frame_idx:07d}.npz"
+        return {"path": f"{str(root_value).rstrip('/')}/{frame_name}", "exists": False}
     root = Path(root_value).expanduser()
     frame_path = (root / f"episode_{frame_idx:07d}.npz").resolve(strict=False)
     payload: dict[str, Any] = {"path": frame_path.as_posix(), "exists": frame_path.exists()}
@@ -55,6 +73,15 @@ def _calvin_frame_fingerprint(root_value: str | Path, frame_idx: int) -> dict[st
         stat = frame_path.stat()
         payload.update({"size": int(stat.st_size), "mtime_ns": int(stat.st_mtime_ns)})
     return payload
+
+
+def _normalise_calvin_entries(episode_entries: list[dict[str, Any]], manifest_dir: Path) -> list[dict[str, Any]]:
+    normalised = []
+    for entry in episode_entries:
+        item = dict(entry)
+        item["root"] = _normalise_calvin_root(item["root"], manifest_dir=manifest_dir)
+        normalised.append(item)
+    return normalised
 
 
 def calvin_index_metadata(episode_entries: list[dict[str, Any]], spec: WindowSpec, image_size: int | None) -> dict[str, Any]:
@@ -106,8 +133,9 @@ class CalvinWindowDataset(Dataset):
         rebuild_index: bool = False,
         cache_size: int = 8,
     ) -> None:
+        manifest_path = Path(manifest_path).resolve()
         manifest = load_json(manifest_path)
-        self.episode_entries = manifest["episodes"]
+        self.episode_entries = _normalise_calvin_entries(manifest["episodes"], manifest_path.parent)
         self.entry_by_id = {entry["episode_id"]: entry for entry in self.episode_entries}
         self.spec = spec or WindowSpec()
         self.image_size = image_size
@@ -130,6 +158,11 @@ class CalvinWindowDataset(Dataset):
         return len(self.index)
 
     def _load_episode(self, entry: dict[str, Any]) -> dict[str, Any]:
+        if _is_unaddressable_posix_absolute(entry["root"]):
+            raise FileNotFoundError(
+                f"CALVIN root {entry['root']!s} is a POSIX absolute path on this platform; "
+                "remap the manifest to a local Windows path before loading."
+            )
         root = Path(entry["root"])
         start = int(entry["start"])
         end = int(entry["end"])

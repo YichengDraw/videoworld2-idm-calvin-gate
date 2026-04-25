@@ -135,7 +135,7 @@ Sanitized summaries are committed in [`results/phase0_summaries.json`](results/p
 
 ### Phase 1 offline CALVIN gate
 
-These numbers replace the earlier stale table after rerunning Phase 1 with the adapter path fix and the baseline architecture-selection fix.
+These committed numbers are the recovered post-fix offline summary from the rescued Phase 1 run. They replace the earlier stale table, but they are not a fresh local regeneration under the current stricter cache/tokenizer guards because the raw CALVIN files and a complete official tokenizer checkpoint are not available in this checkout.
 
 | Controller | Action NLL | Action MSE | Jerk |
 | --- | ---: | ---: | ---: |
@@ -150,6 +150,7 @@ Machine-readable metrics are committed in:
 - [`results/phase1_offline_metrics.json`](results/phase1_offline_metrics.json)
 - [`results/phase1_offline_metrics.csv`](results/phase1_offline_metrics.csv)
 - [`results/phase1_controller_metadata.json`](results/phase1_controller_metadata.json)
+- [`results/phase1_result_provenance.json`](results/phase1_result_provenance.json)
 
 `History_IDM_GTcode` and `Pair_IDM_GTcode` use ground-truth future latent codes from the target trajectory. They are privileged upper-bound checks, not deployable closed-loop policies.
 

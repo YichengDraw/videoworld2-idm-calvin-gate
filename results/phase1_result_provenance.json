@@ -1,0 +1,21 @@
+{
+  "not_a_real_calvin_closed_loop_verdict": true,
+  "fresh_local_regeneration_blocked": true,
+  "safe_interpretation": "offline recovered metrics only; GT-code rows are privileged upper-bound diagnostics; no predicted-code claim is published",
+  "phase1_offline_metrics": {
+    "table_files": [
+      "results/phase1_offline_metrics.json",
+      "results/phase1_offline_metrics.csv"
+    ],
+    "status": "committed post-fix offline summary from the rescued Phase 1 run",
+    "not_a_real_calvin_closed_loop_verdict": true,
+    "fresh_local_regeneration_blocked": true,
+    "blockers": [
+      "raw CALVIN RGB/proprio/action frame files are not committed",
+      "rescued manifests reference the original remote Linux roots",
+      "the locally observed ldm_tokenizer_training_init_weights.pt does not cover all official tokenizer encode-path parameters",
+      "rescued latent caches predate the current strict metadata guard"
+    ],
+    "safe_interpretation": "offline recovered metrics only; GT-code rows are privileged upper-bound diagnostics; no predicted-code claim is published"
+  }
+}

@@ -44,6 +44,7 @@ def prepare_phase0_overfit_cfg(
     cfg["data"]["train_cache"] = str(train_cache)
     cfg["data"]["val_cache"] = str(train_cache)
     cfg["data"]["overwrite_cache"] = True
+    cfg["data"]["validate_split_disjoint"] = False
     cfg["data"]["limit_train_windows"] = None
     cfg["data"]["limit_val_windows"] = None
     if not cfg.get("idm", {}).get("use_future_codes", True) or cfg.get("idm", {}).get("code_source", "gt") != "predicted":

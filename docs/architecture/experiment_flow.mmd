@@ -2,8 +2,8 @@ flowchart TB
   start["Sync latest GitHub main"] --> audit["Audit code, configs, artifacts"]
   audit --> guards["Add reliability guards"]
   guards --> tests["Run unit and compile validation"]
-  tests --> rerun{"Raw CALVIN data and env available?"}
-  rerun -->|yes, within 50 CNY cap| real["Run fixed real CALVIN closed-loop"]
+  tests --> rerun{"Raw CALVIN data/env available within 50 CNY?"}
+  rerun -->|yes| real["Run fixed real CALVIN closed-loop"]
   rerun -->|no| offline["Keep offline CALVIN and mock-smoke boundary"]
   real --> table["Regenerate result tables"]
   offline --> table

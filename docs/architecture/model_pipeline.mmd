@@ -1,8 +1,8 @@
-flowchart LR
+flowchart TB
   manifest["CALVIN or mock manifests"] --> window["Window dataset"]
   window --> batch["rgb_hist, proprio_hist, lang, past_actions, action_chunk, future_clip"]
   batch --> cache["VideoWorld2 local-code cache"]
-  cache --> future["future_codes / future_code_embeds"]
+  cache --> future["GT future_codes / future_code_embeds<br/>(privileged upper bound)"]
   batch --> state["StateEncoder"]
   state --> planner["LatentPlanner (optional predicted codes)"]
   planner --> pred["predicted code embeds"]

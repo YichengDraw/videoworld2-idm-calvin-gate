@@ -28,8 +28,13 @@ The current repository supports an offline CALVIN gate and a mock-only closed-lo
 
 \section*{Phase 1 Offline CALVIN Metrics}
 
+The table below is the committed post-fix offline summary recovered from the rescued Phase 1 run. It is not a fresh local regeneration under the current stricter cache/tokenizer guards because raw CALVIN frame/action files and a complete official tokenizer checkpoint are not available in this checkout.
+
 \begin{center}
-\begin{tabular}{lrrrl}
+\begingroup
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{p{0.30\linewidth}rrrp{0.25\linewidth}}
 \hline
 Controller & Action NLL & Action MSE & Jerk & Interpretation \\
 \hline
@@ -40,6 +45,7 @@ BC\_vis\_proprio & 1.38503 & 0.19142 & 0.00000064 & direct visual+proprio policy
 Pair\_IDM\_GTcode & 1.38689 & 0.18394 & 0.00000206 & privileged GT-code upper bound \\
 \hline
 \end{tabular}
+\endgroup
 \end{center}
 
 The GT-code rows consume future latent codes from the target trajectory. They are useful diagnostic upper bounds, but they are not deployable policies. The deployable rows in this table are the direct-policy baselines and the MLP action head.

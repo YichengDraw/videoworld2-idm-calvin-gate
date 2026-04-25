@@ -58,7 +58,27 @@ def _load_h5(path: Path) -> dict[str, Any]:
         return visit(handle)
 
 
+def _is_unaddressable_posix_absolute(path_value: str | Path) -> bool:
+    raw_path = str(path_value)
+    return raw_path.startswith("/") and not Path(raw_path).expanduser().is_absolute()
+
+
+def _normalise_manifest_path(path_value: str | Path, base_dir: str | Path | None = None) -> str:
+    raw_path = str(path_value)
+    path = Path(raw_path).expanduser()
+    if raw_path.startswith("/") and not path.is_absolute():
+        return path.as_posix()
+    if not path.is_absolute() and base_dir is not None:
+        path = Path(base_dir) / path
+    return path.resolve(strict=False).as_posix()
+
+
 def load_episode(path: str | Path) -> dict[str, Any]:
+    if _is_unaddressable_posix_absolute(path):
+        raise FileNotFoundError(
+            f"Episode path {path!s} is a POSIX absolute path on this platform; "
+            "remap the manifest to a local Windows path before loading."
+        )
     source = Path(path)
     suffix = source.suffix.lower()
     if suffix in {".pt", ".pth"}:
@@ -130,15 +150,24 @@ def build_window_index(
 
 
 def _file_fingerprint(path_value: str | Path, base_dir: str | Path | None = None) -> dict[str, Any]:
-    path = Path(path_value).expanduser()
-    if not path.is_absolute() and base_dir is not None:
-        path = Path(base_dir) / path
-    resolved = path.resolve(strict=False)
+    normalised_path = _normalise_manifest_path(path_value, base_dir=base_dir)
+    if _is_unaddressable_posix_absolute(normalised_path):
+        return {"path": normalised_path, "exists": False}
+    resolved = Path(normalised_path)
     payload: dict[str, Any] = {"path": resolved.as_posix(), "exists": resolved.exists()}
     if resolved.exists() and resolved.is_file():
         stat = resolved.stat()
         payload.update({"size": int(stat.st_size), "mtime_ns": int(stat.st_mtime_ns)})
     return payload
+
+
+def _normalise_episode_entries(episode_entries: list[dict[str, Any]], manifest_dir: Path) -> list[dict[str, Any]]:
+    normalised = []
+    for entry in episode_entries:
+        item = dict(entry)
+        item["path"] = _normalise_manifest_path(item["path"], base_dir=manifest_dir)
+        normalised.append(item)
+    return normalised
 
 
 def robot_index_metadata(episode_entries: list[dict[str, Any]], spec: WindowSpec, image_size: int | None) -> dict[str, Any]:
@@ -167,8 +196,9 @@ class RobotWindowDataset(Dataset):
         limit_windows: int | None = None,
         rebuild_index: bool = False,
     ) -> None:
+        manifest_path = Path(manifest_path).resolve()
         manifest = load_json(manifest_path)
-        self.episode_entries = manifest["episodes"]
+        self.episode_entries = _normalise_episode_entries(manifest["episodes"], manifest_path.parent)
         self.spec = spec or WindowSpec()
         self.image_size = image_size
         self._episode_cache: dict[str, dict[str, Any]] = {}
