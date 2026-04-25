@@ -57,6 +57,65 @@ def teacher_future_code_embeds(cfg: dict, batch: dict, teacher_tokens: torch.Ten
     return future_embeds
 
 
+def run_distillation_epoch(
+    cfg: dict,
+    data_loader,
+    state_encoder,
+    student,
+    optimizer,
+    device: torch.device,
+    training: bool,
+    adapter=None,
+    teacher_encoder=None,
+    teacher_idm=None,
+    teacher_planner_encoder=None,
+    teacher_planner=None,
+) -> dict[str, float]:
+    state_encoder.train(training)
+    student.train(training)
+    totals = {"action_nll": 0.0, "action_mse": 0.0}
+    count = 0
+    for batch in data_loader:
+        batch = to_device(batch, device)
+        state_inputs = batch_to_state_encoder_inputs(batch)
+        state_tokens, _ = state_encoder(**state_inputs)
+        mean, log_std = student(
+            state_tokens=state_tokens,
+            embodiment_id=batch["embodiment_id"].long(),
+            past_action_hist=batch["past_action_hist"],
+        )
+        nll = discounted_gaussian_nll(mean, log_std, batch["action_chunk"], gamma=float(cfg["training"].get("gamma_discount", 0.97)))
+        mse = action_mse(mean, batch["action_chunk"])
+        loss = nll + float(cfg.get("distill", {}).get("lambda_bc", 1.0)) * mse
+        if teacher_encoder is not None and teacher_idm is not None:
+            with torch.no_grad():
+                teacher_tokens, _ = teacher_encoder(**state_inputs)
+                planning_tokens = teacher_tokens
+                if teacher_planner_encoder is not None:
+                    planning_tokens, _ = teacher_planner_encoder(**state_inputs)
+                future_code_embeds = teacher_future_code_embeds(cfg, batch, planning_tokens, adapter, teacher_planner)
+                teacher_mean, _ = teacher_idm(
+                    state_tokens=teacher_tokens,
+                    future_code_embeds=future_code_embeds if cfg["idm"].get("use_future_codes", True) else None,
+                    past_action_hist=batch["past_action_hist"] if cfg["idm"].get("use_past_actions", True) else None,
+                    embodiment_id=batch["embodiment_id"].long(),
+                )
+            loss = loss + float(cfg.get("distill", {}).get("lambda_kl", 0.5)) * F.mse_loss(mean, teacher_mean)
+
+        if training:
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            optimizer.step()
+
+        batch_size = batch["action_chunk"].size(0)
+        totals["action_nll"] += float(nll.detach().cpu()) * batch_size
+        totals["action_mse"] += float(mse.detach().cpu()) * batch_size
+        count += batch_size
+    if count == 0:
+        raise ValueError("Distillation epoch produced no samples.")
+    return {key: value / count for key, value in totals.items()}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("config", type=str)
@@ -115,55 +174,36 @@ def main() -> None:
     if best_metric == float("-inf"):
         best_metric = float("inf")
 
-    def run_epoch(data_loader, training: bool) -> dict[str, float]:
-        state_encoder.train(training)
-        student.train(training)
-        totals = {"action_nll": 0.0, "action_mse": 0.0}
-        count = 0
-        for batch in data_loader:
-            batch = to_device(batch, device)
-            state_inputs = batch_to_state_encoder_inputs(batch)
-            state_tokens, _ = state_encoder(**state_inputs)
-            mean, log_std = student(
-                state_tokens=state_tokens,
-                embodiment_id=batch["embodiment_id"].long(),
-                past_action_hist=batch["past_action_hist"],
-            )
-            nll = discounted_gaussian_nll(mean, log_std, batch["action_chunk"], gamma=float(cfg["training"].get("gamma_discount", 0.97)))
-            mse = action_mse(mean, batch["action_chunk"])
-            loss = nll + float(cfg.get("distill", {}).get("lambda_bc", 1.0)) * mse
-            if teacher_encoder is not None and teacher_idm is not None:
-                with torch.no_grad():
-                    teacher_tokens, _ = teacher_encoder(**state_inputs)
-                    planning_tokens = teacher_tokens
-                    if teacher_planner_encoder is not None:
-                        planning_tokens, _ = teacher_planner_encoder(**state_inputs)
-                    future_code_embeds = teacher_future_code_embeds(cfg, batch, planning_tokens, adapter, teacher_planner)
-                    teacher_mean, _ = teacher_idm(
-                        state_tokens=teacher_tokens,
-                        future_code_embeds=future_code_embeds if cfg["idm"].get("use_future_codes", True) else None,
-                        past_action_hist=batch["past_action_hist"] if cfg["idm"].get("use_past_actions", True) else None,
-                        embodiment_id=batch["embodiment_id"].long(),
-                    )
-                loss = loss + float(cfg.get("distill", {}).get("lambda_kl", 0.5)) * F.mse_loss(mean, teacher_mean)
-
-            if training:
-                optimizer.zero_grad(set_to_none=True)
-                loss.backward()
-                optimizer.step()
-
-            batch_size = batch["action_chunk"].size(0)
-            totals["action_nll"] += float(nll.detach().cpu()) * batch_size
-            totals["action_mse"] += float(mse.detach().cpu()) * batch_size
-            count += batch_size
-        if count == 0:
-            raise ValueError("Distillation epoch produced no samples.")
-        return {key: value / count for key, value in totals.items()}
-
     max_epochs = int(cfg["training"].get("max_epochs", 3))
     for epoch in range(start_epoch, max_epochs):
-        train_metrics = run_epoch(train_loader, training=True)
-        val_metrics = run_epoch(val_loader, training=False)
+        train_metrics = run_distillation_epoch(
+            cfg,
+            train_loader,
+            state_encoder,
+            student,
+            optimizer,
+            device,
+            training=True,
+            adapter=adapter,
+            teacher_encoder=teacher_encoder,
+            teacher_idm=teacher_idm,
+            teacher_planner_encoder=teacher_planner_encoder,
+            teacher_planner=teacher_planner,
+        )
+        val_metrics = run_distillation_epoch(
+            cfg,
+            val_loader,
+            state_encoder,
+            student,
+            optimizer,
+            device,
+            training=False,
+            adapter=adapter,
+            teacher_encoder=teacher_encoder,
+            teacher_idm=teacher_idm,
+            teacher_planner_encoder=teacher_planner_encoder,
+            teacher_planner=teacher_planner,
+        )
         metric = val_metrics["action_nll"]
         is_best = metric < best_metric
         best_metric = min(best_metric, metric)

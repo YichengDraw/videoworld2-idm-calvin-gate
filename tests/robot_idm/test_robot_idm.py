@@ -1217,6 +1217,7 @@ class RobotIDMTests(unittest.TestCase):
                 maybe_resume_training(root, modules={"model": model}, optimizer=optimizer)
 
     def test_training_epoch_rejects_empty_loader(self) -> None:
+        from videoworld2.robot_idm.train.distill_policy import run_distillation_epoch
         from videoworld2.robot_idm.train.train_planner import run_epoch as planner_run_epoch
         from videoworld2.robot_idm.train.train_idm import run_epoch as idm_run_epoch
         from videoworld2.robot_idm.train.train_verifier import run_epoch as verifier_run_epoch
@@ -1225,25 +1226,45 @@ class RobotIDMTests(unittest.TestCase):
         planner = torch.nn.Linear(1, 1)
         optimizer = torch.optim.Adam(list(state_encoder.parameters()) + list(planner.parameters()), lr=1e-3)
 
-        with self.assertRaisesRegex(ValueError, "no samples"):
-            planner_run_epoch([], state_encoder, planner, optimizer, torch.device("cpu"), training=False)
+        for training in (False, True):
+            with self.assertRaisesRegex(ValueError, "no samples"):
+                planner_run_epoch([], state_encoder, planner, optimizer, torch.device("cpu"), training=training)
 
-        with self.assertRaisesRegex(ValueError, "no samples"):
-            idm_run_epoch(
-                {"idm": {}, "training": {}},
-                [],
-                state_encoder,
-                _FakePolicy(),
-                _FakeAdapter(),
-                None,
-                None,
-                optimizer,
-                torch.device("cpu"),
-                training=False,
-            )
+            with self.assertRaisesRegex(ValueError, "no samples"):
+                idm_run_epoch(
+                    {"idm": {}, "training": {}},
+                    [],
+                    state_encoder,
+                    _FakePolicy(),
+                    _FakeAdapter(),
+                    None,
+                    None,
+                    optimizer,
+                    torch.device("cpu"),
+                    training=training,
+                )
 
-        with self.assertRaisesRegex(ValueError, "no samples"):
-            verifier_run_epoch([], state_encoder, ForwardVerifier(2, 8, 4, d_model=8, depth=1, n_heads=1), optimizer, torch.device("cpu"), training=False)
+            with self.assertRaisesRegex(ValueError, "no samples"):
+                verifier_run_epoch(
+                    [],
+                    state_encoder,
+                    ForwardVerifier(2, 8, 4, d_model=8, depth=1, n_heads=1),
+                    optimizer,
+                    torch.device("cpu"),
+                    training=training,
+                )
+
+            with self.assertRaisesRegex(ValueError, "no samples"):
+                run_distillation_epoch(
+                    {"idm": {}, "training": {}, "distill": {}},
+                    [],
+                    state_encoder,
+                    _FakePolicy(),
+                    optimizer,
+                    torch.device("cpu"),
+                    training=training,
+                    adapter=_FakeAdapter(),
+                )
 
     def test_eval_paths_reject_empty_outputs(self) -> None:
         from scripts import debug_action_stats, eval_oracle_replay
@@ -1285,6 +1306,51 @@ class RobotIDMTests(unittest.TestCase):
             mock.patch.object(eval_oracle_replay, "resolve_config_path", return_value=Path("manifest.json")), \
             mock.patch.object(eval_oracle_replay, "load_json", return_value={"episodes": []}):
             with self.assertRaisesRegex(ValueError, "at least one episode"):
+                eval_oracle_replay.evaluate_oracle_replay({"data": {"dataset_type": "mock", "val_manifest": "manifest.json"}}, split="val")
+
+    def test_eval_paths_reject_non_finite_outputs(self) -> None:
+        from scripts import debug_action_stats, eval_oracle_replay
+        from videoworld2.robot_idm.eval import eval_closed_loop
+
+        cfg = {
+            "adapter": {"backend": "mock_geometry", "embed_dim": 64},
+            "data": {"dataset_type": "mock", "action_chunk": 8},
+            "training": {"seed": 7},
+            "idm": {"variant": "bc", "code_source": "gt", "use_future_codes": False, "use_past_actions": False},
+            "evaluation": {"num_rollouts": 1, "execute_per_replan": 2, "rollout_horizon": 2},
+        }
+        dataset = _FakeLoader([], sample=_make_single_sample(), length=1)
+        policy_bundle = (_FakeAdapter(), _FakeStateEncoder(), _FakePolicy(), None, None, None, None)
+
+        with mock.patch.object(eval_closed_loop, "DLDMLocalAdapter", return_value=_FakeAdapter()), \
+            mock.patch.object(eval_closed_loop, "ensure_code_caches"), \
+            mock.patch.object(eval_closed_loop, "build_train_val_datasets", return_value=(None, dataset)), \
+            mock.patch.object(eval_closed_loop, "load_policy_bundle", return_value=policy_bundle), \
+            mock.patch.object(eval_closed_loop, "rollout_success", return_value=torch.tensor(float("nan"))):
+            with self.assertRaisesRegex(ValueError, "Non-finite metric"):
+                eval_closed_loop.evaluate_closed_loop(dict(cfg), "checkpoint.pt", torch.device("cpu"))
+
+        with mock.patch.object(debug_action_stats, "DLDMLocalAdapter", return_value=_FakeAdapter()), \
+            mock.patch.object(debug_action_stats, "ensure_code_caches"), \
+            mock.patch.object(debug_action_stats, "build_train_val_datasets", return_value=(dataset, dataset)), \
+            mock.patch.object(debug_action_stats, "load_policy_bundle", return_value=policy_bundle), \
+            mock.patch.object(debug_action_stats, "rollout_success", return_value=torch.tensor(float("nan"))):
+            with self.assertRaisesRegex(ValueError, "Non-finite metric"):
+                debug_action_stats.collect_debug_stats(dict(cfg), "checkpoint.pt", split="val", device=torch.device("cpu"), max_rollouts=1)
+
+        episode = {
+            "episode_id": "episode_0",
+            "proprio": torch.zeros(2, 4),
+            "action": torch.zeros(2, 2),
+            "meta": {"dt": 0.1, "target": torch.tensor([0.5, 0.5])},
+        }
+        with mock.patch.object(eval_oracle_replay, "prepare_mock_data_if_needed"), \
+            mock.patch.object(eval_oracle_replay, "resolve_config_path", return_value=Path("manifest.json")), \
+            mock.patch.object(eval_oracle_replay, "load_json", return_value={"episodes": [{"path": "episode.pt"}]}), \
+            mock.patch.object(eval_oracle_replay, "_normalise_manifest_path", return_value=Path("episode.pt")), \
+            mock.patch.object(eval_oracle_replay, "load_episode", return_value=episode), \
+            mock.patch.object(eval_oracle_replay, "rollout_success", return_value=torch.tensor(float("nan"))):
+            with self.assertRaisesRegex(ValueError, "Non-finite metric"):
                 eval_oracle_replay.evaluate_oracle_replay({"data": {"dataset_type": "mock", "val_manifest": "manifest.json"}}, split="val")
 
     def test_load_config_preserves_adapter_source_dir(self) -> None:
@@ -1445,6 +1511,12 @@ class RobotIDMTests(unittest.TestCase):
             self.assertTrue(audit["latent_cache"]["train_cache_keys_match_current_window_builder"])
             self.assertTrue(audit["latent_cache"]["val_cache_keys_match_configured_window_prefix"])
             self.assertIn("manifest_content_hash_boundary", audit)
+            self.assertIn("datasets/calvin_static/train_manifest.json", source_paths)
+            self.assertIn("datasets/calvin_static/val_manifest.json", source_paths)
+            self.assertIn("cache/train_windows.json", source_paths)
+            self.assertIn("cache/val_windows.json", source_paths)
+            self.assertIn("cache/train_local_codes.pt", source_paths)
+            self.assertIn("cache/val_local_codes.pt", source_paths)
             for controller in controller_dirs:
                 self.assertIn(f"models/{controller}/resolved_config.yaml", source_paths)
                 self.assertIn(f"models/{controller}/metrics.jsonl", source_paths)
@@ -1549,6 +1621,96 @@ class RobotIDMTests(unittest.TestCase):
             controller_config.write_text("policy:\n  variant: idm\n", encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "source hash mismatch"):
                 package_phase1_results.validate_audited_source_files(root, audit_json)
+
+    def test_phase1_packaging_main_rejects_changed_audited_non_metric_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            models_dir = root / "models"
+            for rel_path in package_phase1_results.RESCUED_OFFLINE_EVALS.values():
+                output_path = models_dir / rel_path
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                save_json(
+                    {
+                        "action_nll": 1.0,
+                        "action_mse": 2.0,
+                        "jerk": 3.0,
+                        "planner_code_accuracy": 0.0,
+                    },
+                    output_path,
+                )
+
+            cache_dir = root / "cache"
+            cache_dir.mkdir()
+            train_windows = cache_dir / "train_windows.json"
+            save_json({"windows": [{"episode_id": "e0", "t": 4}]}, train_windows)
+
+            source_files = [
+                {
+                    "path": f"models/{rel_path}",
+                    "sha256": package_phase1_results._file_sha256(models_dir / rel_path),
+                }
+                for rel_path in package_phase1_results.RESCUED_OFFLINE_EVALS.values()
+            ]
+            source_files.append(
+                {
+                    "path": "cache/train_windows.json",
+                    "sha256": package_phase1_results._file_sha256(train_windows),
+                }
+            )
+            audit_json = root / "audit.json"
+            save_json({"source_files": source_files}, audit_json)
+            save_json({"windows": [{"episode_id": "e0", "t": 8}]}, train_windows)
+
+            metadata = {
+                "bc_vis": {
+                    "conditioning": "direct_policy",
+                    "privileged_future_codes": False,
+                    "deployable_without_future_labels": True,
+                },
+                "bc_vis_proprio": {
+                    "conditioning": "direct_policy",
+                    "privileged_future_codes": False,
+                    "deployable_without_future_labels": True,
+                },
+                "pair_idm_gtcode": {
+                    "conditioning": "ground_truth_future_codes",
+                    "privileged_future_codes": True,
+                    "deployable_without_future_labels": False,
+                },
+                "history_idm_gtcode": {
+                    "conditioning": "ground_truth_future_codes",
+                    "privileged_future_codes": True,
+                    "deployable_without_future_labels": False,
+                },
+                "vw2_hidden_mlp_action_head": {
+                    "conditioning": "direct_mlp_policy",
+                    "privileged_future_codes": False,
+                    "deployable_without_future_labels": True,
+                },
+            }
+            metadata_json = root / "metadata.json"
+            save_json(metadata, metadata_json)
+
+            with mock.patch(
+                "sys.argv",
+                [
+                    "package_phase1_results.py",
+                    "--rescued-models-dir",
+                    str(models_dir),
+                    "--controller-metadata",
+                    str(metadata_json),
+                    "--audit-json",
+                    str(audit_json),
+                    "--output-json",
+                    str(root / "out.json"),
+                    "--output-csv",
+                    str(root / "out.csv"),
+                    "--provenance-json",
+                    str(root / "provenance.json"),
+                ],
+            ):
+                with self.assertRaisesRegex(ValueError, "source hash mismatch"):
+                    package_phase1_results.main()
 
     def test_phase1_packaging_rejects_non_finite_metrics(self) -> None:
         metrics = {

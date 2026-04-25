@@ -17,6 +17,12 @@ env/
 .DS_Store
 Thumbs.db
 
+# Report build and visual-QA byproducts
+docs/reports/*.aux
+docs/reports/*.log
+docs/reports/*.out
+docs/reports/vw2_idm_gate_status_report_page-*.png
+
 # Data and large artifacts
 artifacts/
 cache/

@@ -120,7 +120,7 @@ python -m videoworld2.robot_idm.eval.eval_offline_idm configs/vw2_idm/exp_gt_cod
   is still mock-only in this snapshot. A real CALVIN closed-loop evaluator was requested later and is not implemented here yet.
 - `videoworld2/robot_idm/eval/eval_offline_idm.py`
   includes the planner-load guard so GT-code runs do not incorrectly require a planner checkpoint.
-- Cache metadata now fingerprints adapter checkpoint contents and every CALVIN frame in each manifest span. Saved window indexes are re-derived and compared before reuse, and manifest validation rejects shared file-backed sources plus byte-level or semantic copied CALVIN/frame contents across and within splits.
+- Cache metadata now fingerprints adapter checkpoint contents and every CALVIN frame in each manifest span. Saved window indexes are re-derived and compared before reuse. Manifest validation rejects shared file-backed sources, copied file contents, copied CALVIN frame contents across train/validation, and duplicate copied frame contents under different roots within a split; same-root within-split CALVIN span overlaps are recorded as annotation-window weighting.
 - Policy checkpoints bind IDM conditioning semantics plus planner/teacher checkpoint identities; distillation preserves predicted-code teacher conditioning, and verifier-assisted eval reloads the verifier's paired state encoder before reranking.
 - Explicit resume and standalone evaluation checkpoint paths are guarded before loading, including Windows rejection of unremapped POSIX remote paths.
 
