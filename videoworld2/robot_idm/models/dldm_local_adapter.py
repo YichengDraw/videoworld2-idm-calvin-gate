@@ -28,7 +28,10 @@ def _channel_centroid(channel: torch.Tensor) -> torch.Tensor:
 
 
 def _resolve_path_from_config_dir(path_value: str | Path, config_dir: str | Path | None) -> Path:
+    raw_path = str(path_value)
     path = Path(path_value).expanduser()
+    if raw_path.startswith("/") and not path.is_absolute():
+        raise ValueError(f"Adapter checkpoint path {raw_path} is a POSIX absolute path on this platform; remap it to a local path.")
     if path.is_absolute() or config_dir is None:
         return path
     return (Path(config_dir) / path).resolve()

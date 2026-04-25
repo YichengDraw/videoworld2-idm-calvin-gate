@@ -11,14 +11,21 @@ import torch
 
 from videoworld2.robot_idm.data.calvin_window_dataset import CalvinWindowDataset, _calvin_frame_fingerprint
 from videoworld2.robot_idm.data.robot_window_dataset import RobotWindowDataset, WindowSpec, _file_fingerprint, build_window_index
-from videoworld2.robot_idm.models.dldm_local_adapter import DLDMLocalAdapter
+from videoworld2.robot_idm.models.dldm_local_adapter import DLDMLocalAdapter, _resolve_path_from_config_dir
 from videoworld2.robot_idm.models.forward_verifier import ForwardVerifier
 from videoworld2.robot_idm.models.inverse_dynamics import HistoryAwareIDM
 from videoworld2.robot_idm.models.latent_planner import LatentPlanner
-from videoworld2.robot_idm.train.common import ensure_code_caches, make_dataloaders, maybe_resume_training, sample_code_conditioning
+from videoworld2.robot_idm.train.common import (
+    _manifest_source_fingerprint,
+    ensure_code_caches,
+    make_dataloaders,
+    maybe_resume_training,
+    resolve_config_path,
+    sample_code_conditioning,
+)
 from videoworld2.robot_idm.train.train_idm import build_trainable_policy
 from videoworld2.robot_idm.utils.config import load_config
-from videoworld2.robot_idm.utils.factory import validate_manifest_pair
+from videoworld2.robot_idm.utils.factory import _resolve_path, validate_manifest_pair
 from videoworld2.robot_idm.utils.latent_cache import LatentCodeCache
 from videoworld2.robot_idm.utils.phase0 import prepare_phase0_overfit_cfg
 from videoworld2.robot_idm.utils.runtime import configure_determinism, save_json
@@ -109,6 +116,36 @@ class RobotIDMTests(unittest.TestCase):
             if not Path("/remote/calvin").is_absolute():
                 with self.assertRaisesRegex(FileNotFoundError, "POSIX absolute path"):
                     dataset[0]
+
+    def test_cache_source_fingerprint_preserves_remote_posix_manifest_paths(self) -> None:
+        if Path("/remote/calvin").is_absolute():
+            self.skipTest("POSIX roots are locally addressable on this platform")
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            fingerprints = _manifest_source_fingerprint(
+                {
+                    "episodes": [
+                        {"episode_id": "robot_0", "path": "/remote/episode.pt"},
+                        {"episode_id": "calvin_0", "root": "/remote/calvin", "start": 0, "end": 20},
+                    ]
+                },
+                Path(tmp_dir),
+            )
+
+            self.assertEqual(fingerprints[0]["file"]["path"], "/remote/episode.pt")
+            self.assertEqual(fingerprints[1]["first_frame"]["path"], "/remote/calvin/episode_0000000.npz")
+            self.assertEqual(fingerprints[1]["last_frame"]["path"], "/remote/calvin/episode_0000020.npz")
+
+    def test_config_level_remote_posix_paths_fail_before_local_remap(self) -> None:
+        if Path("/remote/config.json").is_absolute():
+            self.skipTest("POSIX paths are native absolute paths on this platform")
+        cfg = {"_meta": {"config_path": "C:/repo/configs/vw2_idm/exp.yaml"}}
+
+        with self.assertRaisesRegex(ValueError, "POSIX absolute path"):
+            resolve_config_path(cfg, "/remote/train_manifest.json")
+        with self.assertRaisesRegex(ValueError, "POSIX absolute path"):
+            _resolve_path("C:/repo/configs/vw2_idm/exp.yaml", "/remote/train_manifest.json")
+        with self.assertRaisesRegex(ValueError, "POSIX absolute path"):
+            _resolve_path_from_config_dir("/remote/tokenizer.pt", "C:/repo/configs/vw2_idm")
 
     def test_window_index_rejects_episode_file_change(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

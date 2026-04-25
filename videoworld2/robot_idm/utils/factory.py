@@ -26,7 +26,10 @@ def build_window_spec(cfg: dict[str, Any]) -> WindowSpec:
 
 
 def _resolve_path(config_path: str, path_value: str) -> str:
+    raw_path = str(path_value)
     candidate = Path(path_value)
+    if raw_path.startswith("/") and not candidate.is_absolute():
+        raise ValueError(f"Config path {raw_path} is a POSIX absolute path on this platform; remap it to a local path.")
     if candidate.is_absolute():
         return str(candidate)
     return str((Path(config_path).parent / candidate).resolve())

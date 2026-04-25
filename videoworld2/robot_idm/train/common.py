@@ -18,7 +18,10 @@ from videoworld2.robot_idm.utils.runtime import ensure_dir, load_json, make_torc
 
 
 def resolve_config_path(cfg: dict[str, Any], path_value: str) -> Path:
+    raw_path = str(path_value)
     path = Path(path_value)
+    if raw_path.startswith("/") and not path.is_absolute():
+        raise ValueError(f"Config path {raw_path} is a POSIX absolute path on this platform; remap it to a local path.")
     if path.is_absolute():
         return path
     return (Path(cfg["_meta"]["config_path"]).parent / path).resolve()
@@ -75,11 +78,33 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return default
 
 
-def _file_fingerprint(path_value: str | Path, base_dir: Path | None = None) -> dict[str, Any]:
-    path = Path(path_value).expanduser()
+def _is_unaddressable_posix_absolute(path_value: str | Path) -> bool:
+    raw_path = str(path_value)
+    return raw_path.startswith("/") and not Path(raw_path).expanduser().is_absolute()
+
+
+def _normalise_manifest_path(path_value: str | Path, base_dir: Path | None = None) -> str:
+    raw_path = str(path_value)
+    path = Path(raw_path).expanduser()
+    if raw_path.startswith("/") and not path.is_absolute():
+        return path.as_posix()
     if not path.is_absolute() and base_dir is not None:
         path = base_dir / path
-    resolved = path.resolve(strict=False)
+    return path.resolve(strict=False).as_posix()
+
+
+def _join_manifest_path(root_value: str | Path, name: str) -> str:
+    root = str(root_value).rstrip("/\\")
+    if _is_unaddressable_posix_absolute(root):
+        return f"{root}/{name}"
+    return (Path(root) / name).as_posix()
+
+
+def _file_fingerprint(path_value: str | Path, base_dir: Path | None = None) -> dict[str, Any]:
+    normalised_path = _normalise_manifest_path(path_value, base_dir=base_dir)
+    if _is_unaddressable_posix_absolute(normalised_path):
+        return {"path": normalised_path, "exists": False}
+    resolved = Path(normalised_path)
     payload: dict[str, Any] = {"path": resolved.as_posix(), "exists": resolved.exists()}
     if resolved.exists() and resolved.is_file():
         stat = resolved.stat()
@@ -94,11 +119,9 @@ def _manifest_source_fingerprint(manifest_payload: dict[str, Any], manifest_dir:
         if "path" in entry:
             item["file"] = _file_fingerprint(entry["path"], base_dir=manifest_dir)
         if {"root", "start", "end"} <= set(entry):
-            root = Path(str(entry["root"])).expanduser()
-            if not root.is_absolute() and not str(entry["root"]).startswith("/"):
-                root = manifest_dir / root
-            item["first_frame"] = _file_fingerprint(root / f"episode_{int(entry['start']):07d}.npz")
-            item["last_frame"] = _file_fingerprint(root / f"episode_{int(entry['end']):07d}.npz")
+            root = _normalise_manifest_path(entry["root"], base_dir=manifest_dir)
+            item["first_frame"] = _file_fingerprint(_join_manifest_path(root, f"episode_{int(entry['start']):07d}.npz"))
+            item["last_frame"] = _file_fingerprint(_join_manifest_path(root, f"episode_{int(entry['end']):07d}.npz"))
         fingerprints.append(item)
     return fingerprints
 

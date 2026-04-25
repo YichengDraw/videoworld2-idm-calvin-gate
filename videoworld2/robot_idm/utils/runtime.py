@@ -35,14 +35,14 @@ def make_worker_init_fn(seed: int) -> Callable[[int], None]:
     return _seed_worker
 
 
-def configure_determinism(seed: int, deterministic: bool = True) -> None:
+def configure_determinism(seed: int, deterministic: bool = True, warn_only: bool = False) -> None:
     seed_all(seed)
     if deterministic:
         os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
         try:
-            torch.use_deterministic_algorithms(True, warn_only=True)
+            torch.use_deterministic_algorithms(True, warn_only=warn_only)
         except TypeError:
             torch.use_deterministic_algorithms(True)
 
