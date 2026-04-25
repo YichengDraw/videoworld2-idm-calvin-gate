@@ -129,6 +129,18 @@ def build_window_index(
     return index
 
 
+def _file_fingerprint(path_value: str | Path, base_dir: str | Path | None = None) -> dict[str, Any]:
+    path = Path(path_value).expanduser()
+    if not path.is_absolute() and base_dir is not None:
+        path = Path(base_dir) / path
+    resolved = path.resolve(strict=False)
+    payload: dict[str, Any] = {"path": resolved.as_posix(), "exists": resolved.exists()}
+    if resolved.exists() and resolved.is_file():
+        stat = resolved.stat()
+        payload.update({"size": int(stat.st_size), "mtime_ns": int(stat.st_mtime_ns)})
+    return payload
+
+
 def robot_index_metadata(episode_entries: list[dict[str, Any]], spec: WindowSpec, image_size: int | None) -> dict[str, Any]:
     return {
         "metadata_version": 2,
@@ -136,6 +148,10 @@ def robot_index_metadata(episode_entries: list[dict[str, Any]], spec: WindowSpec
         "image_size": image_size,
         "episodes": [
             {"episode_id": entry.get("episode_id"), "path": entry.get("path")}
+            for entry in episode_entries
+        ],
+        "episode_files": [
+            {"episode_id": entry.get("episode_id"), "file": _file_fingerprint(entry.get("path", ""))}
             for entry in episode_entries
         ],
     }

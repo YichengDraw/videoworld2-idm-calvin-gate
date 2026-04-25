@@ -76,6 +76,8 @@ bash scripts/extract_local_robot_codes.sh configs/vw2_idm/data_calvin_gate_4090.
 
 The rescued checkpoint bundle from the original run is intentionally excluded from version control. See [`docs/rescued_artifacts.md`](docs/rescued_artifacts.md) for the artifact inventory.
 
+Official dLDM tokenizer checkpoints are now checked for encode-path parameter coverage. The locally observed `ldm_tokenizer_training_init_weights.pt` file is rejected by this guard because it does not cover all encode-path parameters; use a complete tokenizer checkpoint for fresh official-cache extraction.
+
 ## Usage
 
 ### Phase 0 smoke gate
@@ -129,7 +131,7 @@ python -m videoworld2.robot_idm.eval.eval_offline_idm configs/vw2_idm/exp_gt_cod
 | BC overfit closed loop | `33.33%` success, offline MSE `0.00283` |
 | History-IDM GT-code overfit closed loop | `16.67%` success, offline MSE `0.00346` |
 
-Sanitized summaries are committed in [`results/phase0_summaries.json`](results/phase0_summaries.json).
+Sanitized summaries are committed in [`results/phase0_summaries.json`](results/phase0_summaries.json), with mock-only provenance in [`results/phase0_rollout_metadata.json`](results/phase0_rollout_metadata.json).
 
 ### Phase 1 offline CALVIN gate
 

@@ -12,7 +12,7 @@ from videoworld2.robot_idm.utils.config import load_config
 from videoworld2.robot_idm.utils.factory import build_train_val_datasets, build_window_spec
 from videoworld2.robot_idm.utils.metrics import jerk_metric, rollout_success
 from videoworld2.robot_idm.utils.mock_data import oracle_action, render_mock_frame
-from videoworld2.robot_idm.utils.runtime import resolve_device, save_json
+from videoworld2.robot_idm.utils.runtime import configure_determinism, resolve_device, save_json
 
 
 def _oracle_future_clip(sample: dict[str, Any], horizon: int) -> torch.Tensor:
@@ -36,6 +36,9 @@ def _oracle_future_clip(sample: dict[str, Any], horizon: int) -> torch.Tensor:
 
 @torch.no_grad()
 def evaluate_closed_loop(cfg: dict[str, Any], checkpoint_path: str, device: torch.device | None = None) -> dict[str, float]:
+    if cfg["data"].get("dataset_type") != "mock":
+        raise ValueError("Closed-loop evaluation currently requires dataset_type=mock.")
+    configure_determinism(int(cfg["training"].get("seed", 7)), deterministic=bool(cfg["training"].get("deterministic", True)))
     device = device or resolve_device("auto")
     adapter = DLDMLocalAdapter(cfg["adapter"]).to(device)
     ensure_code_caches(cfg, adapter=adapter, device=device)
@@ -43,9 +46,6 @@ def evaluate_closed_loop(cfg: dict[str, Any], checkpoint_path: str, device: torc
     sample = val_dataset[0]
     cfg["data"]["action_dim"] = int(sample["action_chunk"].size(-1))
     adapter, state_encoder, idm, planner_encoder, planner, verifier = load_policy_bundle(cfg, checkpoint_path, device)
-
-    if cfg["data"].get("dataset_type") != "mock":
-        raise ValueError("Closed-loop evaluation currently requires dataset_type=mock.")
 
     max_rollouts = int(cfg.get("evaluation", {}).get("num_rollouts", 8))
     execute_per_replan = int(cfg.get("evaluation", {}).get("execute_per_replan", cfg["data"].get("action_chunk", 8) // 2))

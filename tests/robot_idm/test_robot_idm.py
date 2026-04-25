@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -8,10 +9,11 @@ from unittest import mock
 import torch
 
 from videoworld2.robot_idm.data.robot_window_dataset import RobotWindowDataset, WindowSpec, build_window_index
+from videoworld2.robot_idm.models.dldm_local_adapter import DLDMLocalAdapter
 from videoworld2.robot_idm.models.forward_verifier import ForwardVerifier
 from videoworld2.robot_idm.models.inverse_dynamics import HistoryAwareIDM
 from videoworld2.robot_idm.models.latent_planner import LatentPlanner
-from videoworld2.robot_idm.train.common import ensure_code_caches, maybe_resume_training, sample_code_conditioning
+from videoworld2.robot_idm.train.common import ensure_code_caches, make_dataloaders, maybe_resume_training, sample_code_conditioning
 from videoworld2.robot_idm.train.train_idm import build_trainable_policy
 from videoworld2.robot_idm.utils.config import load_config
 from videoworld2.robot_idm.utils.factory import validate_manifest_pair
@@ -55,6 +57,130 @@ class RobotIDMTests(unittest.TestCase):
             self.assertEqual(sample["rgb_hist"].shape, (4, 3, 32, 32))
             self.assertEqual(sample["future_clip"].shape, (9, 3, 32, 32))
             self.assertEqual(sample["action_chunk"].shape, (8, 2))
+
+    def test_window_index_rejects_episode_file_change(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            episode_path = tmp_path / "episode.pt"
+            _make_episode(episode_path, "episode_0")
+            manifest_path = tmp_path / "manifest.json"
+            index_path = tmp_path / "windows.json"
+            save_json({"episodes": [{"path": str(episode_path), "episode_id": "episode_0"}]}, manifest_path)
+
+            spec = WindowSpec(history_frames=4, past_action_hist=4, future_video_horizon=8, action_chunk=8, stride=4)
+            RobotWindowDataset(manifest_path=manifest_path, index_path=index_path, spec=spec)
+            stat = episode_path.stat()
+            episode_path.write_bytes(episode_path.read_bytes() + b"changed")
+            self.assertGreater(episode_path.stat().st_size, stat.st_size)
+
+            with self.assertRaisesRegex(ValueError, "metadata mismatch"):
+                RobotWindowDataset(manifest_path=manifest_path, index_path=index_path, spec=spec)
+
+    def test_dataloaders_reject_zero_window_dataset(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            train_episode = root / "train.pt"
+            val_episode = root / "val.pt"
+            _make_episode(train_episode, "train_0", length=6)
+            _make_episode(val_episode, "val_0", length=6)
+            train_manifest = root / "train_manifest.json"
+            val_manifest = root / "val_manifest.json"
+            save_json({"episodes": [{"path": str(train_episode), "episode_id": "train_0"}]}, train_manifest)
+            save_json({"episodes": [{"path": str(val_episode), "episode_id": "val_0"}]}, val_manifest)
+            cfg = {
+                "_meta": {"config_path": str(root / "exp.yaml")},
+                "data": {
+                    "dataset_type": "standard",
+                    "train_manifest": str(train_manifest),
+                    "val_manifest": str(val_manifest),
+                    "train_index": str(root / "train_index.json"),
+                    "val_index": str(root / "val_index.json"),
+                    "history_frames": 4,
+                    "past_action_hist": 4,
+                    "future_video_horizon": 8,
+                    "action_chunk": 8,
+                    "stride": 4,
+                    "image_size": 32,
+                },
+                "training": {"batch_size": 2, "num_workers": 0},
+            }
+
+            with self.assertRaisesRegex(ValueError, "zero windows"):
+                make_dataloaders(cfg, use_latent_cache=False)
+
+    def test_mock_adapter_initialization_is_stable(self) -> None:
+        torch.manual_seed(123)
+        first = DLDMLocalAdapter({"backend": "mock_geometry", "embed_dim": 16, "init_seed": 5})
+        torch.manual_seed(999)
+        second = DLDMLocalAdapter({"backend": "mock_geometry", "embed_dim": 16, "init_seed": 5})
+
+        self.assertTrue(torch.equal(first.impl.embedding.weight, second.impl.embedding.weight))
+
+    def test_official_adapter_rejects_partial_checkpoint_load(self) -> None:
+        class FakeOfficialTokenizer(torch.nn.Module):
+            def __init__(self, **kwargs) -> None:
+                super().__init__()
+                self.loaded = torch.nn.Linear(2, 2)
+                self.missing = torch.nn.Linear(2, 2)
+
+        fake_module = types.ModuleType("videoworld2.latent_dynamics.discrete_video_latent_dynamic")
+        fake_module.CausalDiscreteVideoLatentDynamicTokenizer = FakeOfficialTokenizer
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            checkpoint_path = Path(tmp_dir) / "tokenizer.pt"
+            model = FakeOfficialTokenizer()
+            torch.save(
+                {
+                    "state_dict": {
+                        "loaded.weight": model.loaded.weight.detach().clone(),
+                        "loaded.bias": model.loaded.bias.detach().clone(),
+                    }
+                },
+                checkpoint_path,
+            )
+            with mock.patch.dict("sys.modules", {"videoworld2.latent_dynamics.discrete_video_latent_dynamic": fake_module}):
+                with self.assertRaisesRegex(ValueError, "missing parameters"):
+                    DLDMLocalAdapter(
+                        {
+                            "backend": "official",
+                            "checkpoint_path": str(checkpoint_path),
+                            "embed_dim": 4,
+                            "vocab_size": 8,
+                            "n_codes": 2,
+                        }
+                    )
+
+    def test_official_adapter_allows_decoder_only_missing_checkpoint_params(self) -> None:
+        class FakeOfficialTokenizer(torch.nn.Module):
+            def __init__(self, **kwargs) -> None:
+                super().__init__()
+                self.encoder = torch.nn.Linear(2, 2)
+                self.decoder = torch.nn.Linear(2, 2)
+
+        fake_module = types.ModuleType("videoworld2.latent_dynamics.discrete_video_latent_dynamic")
+        fake_module.CausalDiscreteVideoLatentDynamicTokenizer = FakeOfficialTokenizer
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            checkpoint_path = Path(tmp_dir) / "tokenizer.pt"
+            model = FakeOfficialTokenizer()
+            torch.save(
+                {
+                    "state_dict": {
+                        "encoder.weight": model.encoder.weight.detach().clone(),
+                        "encoder.bias": model.encoder.bias.detach().clone(),
+                    }
+                },
+                checkpoint_path,
+            )
+            with mock.patch.dict("sys.modules", {"videoworld2.latent_dynamics.discrete_video_latent_dynamic": fake_module}):
+                adapter = DLDMLocalAdapter(
+                    {
+                        "backend": "official",
+                        "checkpoint_path": str(checkpoint_path),
+                        "embed_dim": 4,
+                        "vocab_size": 8,
+                        "n_codes": 2,
+                    }
+                )
+            self.assertEqual(adapter.backend, "official")
 
     def test_latent_cache_indexing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -386,6 +512,19 @@ class RobotIDMTests(unittest.TestCase):
 
             with self.assertRaisesRegex(RuntimeError, "Missing key"):
                 load_policy_bundle(cfg, str(policy_checkpoint), torch.device("cpu"))
+
+    def test_closed_loop_rejects_non_mock_before_cache_work(self) -> None:
+        from videoworld2.robot_idm.eval.eval_closed_loop import evaluate_closed_loop
+
+        cfg = {
+            "adapter": {"backend": "mock_geometry", "embed_dim": 16},
+            "data": {"dataset_type": "calvin_static"},
+            "training": {"seed": 7},
+        }
+        with mock.patch("videoworld2.robot_idm.eval.eval_closed_loop.ensure_code_caches") as ensure:
+            with self.assertRaisesRegex(ValueError, "dataset_type=mock"):
+                evaluate_closed_loop(cfg, checkpoint_path="unused.pt", device=torch.device("cpu"))
+            ensure.assert_not_called()
 
 
 if __name__ == "__main__":

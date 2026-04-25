@@ -1,0 +1,29 @@
+{
+  "oracle_replay": {
+    "dataset_type": "mock",
+    "real_calvin_closed_loop": false,
+    "purpose": "synthetic plumbing oracle check"
+  },
+  "bc_overfit_e12": {
+    "dataset_type": "mock",
+    "real_calvin_closed_loop": false,
+    "purpose": "synthetic closed-loop smoke test"
+  },
+  "bc_overfit_e12_repeat": {
+    "dataset_type": "mock",
+    "real_calvin_closed_loop": false,
+    "purpose": "synthetic closed-loop smoke test repeat"
+  },
+  "history_gt_overfit_e12": {
+    "dataset_type": "mock",
+    "real_calvin_closed_loop": false,
+    "privileged_future_codes": true,
+    "purpose": "synthetic privileged-code smoke test"
+  },
+  "history_gt_overfit_e12_repeat": {
+    "dataset_type": "mock",
+    "real_calvin_closed_loop": false,
+    "privileged_future_codes": true,
+    "purpose": "synthetic privileged-code smoke test repeat"
+  }
+}

@@ -133,6 +133,18 @@ class OfficialDLDMTokenizer(nn.Module):
                 for key, value in cleaned.items()
                 if key in expected and hasattr(value, "shape") and expected[key].shape == value.shape
             }
+            expected_params = set(dict(self.model.named_parameters()))
+            loaded_params = expected_params & set(filtered)
+            missing_params = sorted(expected_params - loaded_params)
+            missing_required_params = [key for key in missing_params if not key.startswith("decoder.")]
+            if missing_required_params and not bool(cfg.get("allow_partial_checkpoint", False)):
+                sample = ", ".join(missing_required_params[:5])
+                raise ValueError(
+                    f"Official tokenizer checkpoint did not load all encode-path model parameters; "
+                    f"sample missing parameters: {sample}. Set allow_partial_checkpoint=true only for diagnostics."
+                )
+            if not filtered:
+                raise ValueError(f"Official tokenizer checkpoint produced no loadable tensors: {resolved_checkpoint}")
             self.model.load_state_dict(filtered, strict=False)
         self.vocab_size = int(cfg.get("vocab_size", 1024))
         self.n_codes = int(cfg.get("n_codes", 8))
@@ -164,19 +176,22 @@ class DLDMLocalAdapter(nn.Module):
     def __init__(self, cfg: dict[str, Any]) -> None:
         super().__init__()
         self.backend = cfg.get("backend", "mock_geometry")
-        if self.backend == "official":
-            self.impl = OfficialDLDMTokenizer(cfg)
-        elif self.backend == "surrogate":
-            self.impl = SurrogateLocalTokenizer(
-                vocab_size=int(cfg.get("vocab_size", 64)),
-                n_codes=int(cfg.get("n_codes", 4)),
-                embed_dim=int(cfg.get("embed_dim", 128)),
-                hidden_dim=int(cfg.get("hidden_dim", 128)),
-            )
-        elif self.backend == "mock_geometry":
-            self.impl = MockGeometryTokenizer(embed_dim=int(cfg.get("embed_dim", 128)))
-        else:
-            raise ValueError(f"Unsupported dLDM backend: {self.backend}")
+        self.init_seed = int(cfg.get("init_seed", 0))
+        with torch.random.fork_rng(devices=[]):
+            torch.manual_seed(self.init_seed)
+            if self.backend == "official":
+                self.impl = OfficialDLDMTokenizer(cfg)
+            elif self.backend == "surrogate":
+                self.impl = SurrogateLocalTokenizer(
+                    vocab_size=int(cfg.get("vocab_size", 64)),
+                    n_codes=int(cfg.get("n_codes", 4)),
+                    embed_dim=int(cfg.get("embed_dim", 128)),
+                    hidden_dim=int(cfg.get("hidden_dim", 128)),
+                )
+            elif self.backend == "mock_geometry":
+                self.impl = MockGeometryTokenizer(embed_dim=int(cfg.get("embed_dim", 128)))
+            else:
+                raise ValueError(f"Unsupported dLDM backend: {self.backend}")
 
         self.vocab_size = int(getattr(self.impl, "vocab_size"))
         self.n_codes = int(getattr(self.impl, "n_codes"))

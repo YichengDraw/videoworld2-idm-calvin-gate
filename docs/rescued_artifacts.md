@@ -38,3 +38,4 @@ The committed files in `results/` are the public, lightweight post-fix summaries
 - The rescued CALVIN manifests referenced remote dataset roots during the original run.
 - The rescued files preserved the completed offline metrics, but they do not by themselves complete the later real closed-loop CALVIN adjudication request.
 - The latent caches do not contain raw CALVIN RGB, proprio, or action arrays. Local offline re-evaluation still needs those raw frame files or an equivalent remapped dataset root.
+- The locally observed `ldm_tokenizer_training_init_weights.pt` file is not accepted by the current official-tokenizer guard for fresh cache extraction because it misses encode-path parameters. A fresh official-tokenizer rerun needs a complete tokenizer checkpoint or an explicitly diagnostic partial-checkpoint override.

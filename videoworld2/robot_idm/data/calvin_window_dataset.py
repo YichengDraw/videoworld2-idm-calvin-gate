@@ -47,6 +47,16 @@ def build_calvin_window_index(episode_entries: list[dict[str, Any]], spec: Windo
     return index
 
 
+def _calvin_frame_fingerprint(root_value: str | Path, frame_idx: int) -> dict[str, Any]:
+    root = Path(root_value).expanduser()
+    frame_path = (root / f"episode_{frame_idx:07d}.npz").resolve(strict=False)
+    payload: dict[str, Any] = {"path": frame_path.as_posix(), "exists": frame_path.exists()}
+    if frame_path.exists() and frame_path.is_file():
+        stat = frame_path.stat()
+        payload.update({"size": int(stat.st_size), "mtime_ns": int(stat.st_mtime_ns)})
+    return payload
+
+
 def calvin_index_metadata(episode_entries: list[dict[str, Any]], spec: WindowSpec, image_size: int | None) -> dict[str, Any]:
     return {
         "metadata_version": 2,
@@ -58,6 +68,14 @@ def calvin_index_metadata(episode_entries: list[dict[str, Any]], spec: WindowSpe
                 "root": entry.get("root"),
                 "start": int(entry.get("start", -1)),
                 "end": int(entry.get("end", -1)),
+            }
+            for entry in episode_entries
+        ],
+        "episode_frame_files": [
+            {
+                "episode_id": entry.get("episode_id"),
+                "first": _calvin_frame_fingerprint(entry.get("root", ""), int(entry.get("start", -1))),
+                "last": _calvin_frame_fingerprint(entry.get("root", ""), int(entry.get("end", -1))),
             }
             for entry in episode_entries
         ],

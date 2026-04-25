@@ -68,18 +68,57 @@ def _json_digest(payload: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _file_fingerprint(path_value: str | Path, base_dir: Path | None = None) -> dict[str, Any]:
+    path = Path(path_value).expanduser()
+    if not path.is_absolute() and base_dir is not None:
+        path = base_dir / path
+    resolved = path.resolve(strict=False)
+    payload: dict[str, Any] = {"path": resolved.as_posix(), "exists": resolved.exists()}
+    if resolved.exists() and resolved.is_file():
+        stat = resolved.stat()
+        payload.update({"size": int(stat.st_size), "mtime_ns": int(stat.st_mtime_ns)})
+    return payload
+
+
+def _manifest_source_fingerprint(manifest_payload: dict[str, Any], manifest_dir: Path) -> list[dict[str, Any]]:
+    fingerprints = []
+    for entry in manifest_payload.get("episodes", []):
+        item: dict[str, Any] = {"episode_id": entry.get("episode_id")}
+        if "path" in entry:
+            item["file"] = _file_fingerprint(entry["path"], base_dir=manifest_dir)
+        if {"root", "start", "end"} <= set(entry):
+            root = Path(str(entry["root"])).expanduser()
+            if not root.is_absolute() and not str(entry["root"]).startswith("/"):
+                root = manifest_dir / root
+            item["first_frame"] = _file_fingerprint(root / f"episode_{int(entry['start']):07d}.npz")
+            item["last_frame"] = _file_fingerprint(root / f"episode_{int(entry['end']):07d}.npz")
+        fingerprints.append(item)
+    return fingerprints
+
+
 def _dataset_cache_metadata(cfg: dict[str, Any], dataset, split: str, adapter) -> dict[str, Any]:
     spec = getattr(dataset, "spec", None)
     first_window = dataset.index[0] if getattr(dataset, "index", None) else {}
     last_window = dataset.index[-1] if getattr(dataset, "index", None) else {}
     manifest_path = resolve_config_path(cfg, cfg["data"][f"{split}_manifest"])
     manifest_payload = load_json(manifest_path)
+    adapter_cfg = cfg.get("adapter", {})
     metadata = {
         "metadata_version": 2,
         "split": split,
         "dataset_type": cfg["data"].get("dataset_type", "standard"),
         "manifest_path": str(manifest_path),
         "manifest_digest": _json_digest(manifest_payload),
+        "manifest_source_digest": _json_digest(_manifest_source_fingerprint(manifest_payload, manifest_path.parent)),
+        "adapter_config_digest": _json_digest(adapter_cfg),
+        "adapter_init_seed": _safe_int(getattr(adapter, "init_seed", adapter_cfg.get("init_seed", 0))),
         "image_size": cfg["data"].get("image_size"),
         "window_spec": vars(spec) if spec is not None else {},
         "num_windows": len(dataset),
@@ -94,15 +133,21 @@ def _dataset_cache_keys(dataset) -> set[str]:
     return {LatentCodeCache.make_key(record["episode_id"], int(record["t"])) for record in dataset.index}
 
 
+def _validate_non_empty_dataset(dataset, split: str) -> None:
+    if len(dataset) == 0:
+        raise ValueError(f"{split} dataset produced zero windows; check manifest paths, episode lengths, and window spec.")
+
+
 def ensure_code_caches(cfg: dict[str, Any], adapter, device: torch.device) -> None:
     prepare_mock_data_if_needed(cfg)
     data_cfg = cfg["data"]
     train_cache = resolve_config_path(cfg, data_cfg["train_cache"])
     val_cache = resolve_config_path(cfg, data_cfg["val_cache"])
     overwrite_cache = bool(data_cfg.get("overwrite_cache", False))
-    allow_legacy_metadata = bool(data_cfg.get("allow_legacy_cache_metadata", False))
 
     train_dataset, val_dataset = build_train_val_datasets(cfg, use_latent_cache=False)
+    _validate_non_empty_dataset(train_dataset, "train")
+    _validate_non_empty_dataset(val_dataset, "val")
     train_metadata = _dataset_cache_metadata(cfg, train_dataset, "train", adapter)
     val_metadata = _dataset_cache_metadata(cfg, val_dataset, "val", adapter)
 
@@ -117,7 +162,7 @@ def ensure_code_caches(cfg: dict[str, Any], adapter, device: torch.device) -> No
                 cache_path,
                 expected_metadata=metadata,
                 expected_keys=expected_keys,
-                allow_legacy_metadata=allow_legacy_metadata,
+                allow_legacy_metadata=False,
             )
             continue
 
@@ -137,6 +182,8 @@ def ensure_code_caches(cfg: dict[str, Any], adapter, device: torch.device) -> No
 def make_dataloaders(cfg: dict[str, Any], use_latent_cache: bool) -> tuple[DataLoader, DataLoader]:
     prepare_mock_data_if_needed(cfg)
     train_dataset, val_dataset = build_train_val_datasets(cfg, use_latent_cache=use_latent_cache)
+    _validate_non_empty_dataset(train_dataset, "train")
+    _validate_non_empty_dataset(val_dataset, "val")
     batch_size = int(cfg["training"].get("batch_size", 32))
     num_workers = int(cfg["training"].get("num_workers", 0))
     use_pin_memory = bool(cfg["training"].get("pin_memory", torch.cuda.is_available()))
