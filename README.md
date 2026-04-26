@@ -13,6 +13,10 @@ This repository packages the experiment code, configs, scripts, public reports, 
 
 ## Visual Summary
 
+![VideoWorld2-IDM architecture overview](assets/readme_figs/vw2_idm_architecture_overview.png)
+
+The architecture separates shared history encoding, predicted or privileged future-code reasoning, and robot-action chunk generation across the direct-policy, predicted-code IDM, and GT-code diagnostic pathways.
+
 ![VideoWorld2-IDM model pipeline](assets/readme_figs/vw2_idm_model_pipeline.png)
 
 The implemented `robot_idm` pipeline feeds windowed robot history through a state encoder and supports direct policy inputs, predicted latent codes, and privileged ground-truth future codes. The committed Phase 1 CALVIN table publishes only direct-policy rows plus privileged GT-code diagnostics; it does not publish a predicted-code CALVIN claim.
