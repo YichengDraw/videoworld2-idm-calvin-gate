@@ -1,0 +1,194 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1040" viewBox="0 0 1600 1040">
+  <rect width="1600" height="1040" fill="#ffffff"/>
+  <text x="800" y="52" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="700" fill="#111111">VideoWorld2-IDM for CALVIN Robot Control</text>
+  <text x="800" y="86" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="600" fill="#444444">Updated public overview of the repo's method branches, published metrics, and evaluation boundary</text>
+
+  <rect x="20" y="110" width="330" height="860" rx="16" fill="#f8fbff" stroke="#1f4da3" stroke-width="3"/>
+  <rect x="20" y="110" width="330" height="48" rx="16" fill="#1f4da3"/>
+  <text x="185" y="143" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#ffffff">1. Input &amp; Backbone</text>
+
+  <rect x="40" y="180" width="290" height="132" rx="14" fill="#ffffff" stroke="#7aa7f0" stroke-width="2"/>
+  <text x="56" y="210" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#173b7a">CALVIN setup</text>
+  <text x="56" y="240" font-family="Arial, Helvetica, sans-serif" font-size="16" fill="#222222">• Static RGB camera sequence</text>
+  <text x="56" y="268" font-family="Arial, Helvetica, sans-serif" font-size="16" fill="#222222">• Windowed robot history</text>
+  <text x="56" y="296" font-family="Arial, Helvetica, sans-serif" font-size="16" fill="#222222">• Optional proprio stream</text>
+
+  <line x1="185" y1="312" x2="185" y2="352" stroke="#1f4da3" stroke-width="3"/>
+  <polygon points="185,366 177,350 193,350" fill="#1f4da3"/>
+
+  <rect x="40" y="372" width="290" height="132" rx="14" fill="#ffffff" stroke="#7aa7f0" stroke-width="2"/>
+  <text x="56" y="402" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#173b7a">Windowed observations</text>
+  <text x="56" y="432" font-family="Arial, Helvetica, sans-serif" font-size="16" fill="#222222">RGB history frames t-H ... t</text>
+  <text x="56" y="460" font-family="Arial, Helvetica, sans-serif" font-size="16" fill="#222222">Optional proprioception features</text>
+  <text x="56" y="488" font-family="Arial, Helvetica, sans-serif" font-size="16" fill="#222222">Joint state / gripper / EE pose</text>
+
+  <line x1="185" y1="504" x2="185" y2="544" stroke="#1f4da3" stroke-width="3"/>
+  <polygon points="185,558 177,542 193,542" fill="#1f4da3"/>
+
+  <rect x="40" y="564" width="290" height="170" rx="14" fill="#ffffff" stroke="#7aa7f0" stroke-width="2"/>
+  <text x="56" y="594" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#173b7a">State Encoder</text>
+  <text x="56" y="624" font-family="Arial, Helvetica, sans-serif" font-size="16" fill="#222222">Built on the VideoWorld2 backbone</text>
+  <text x="56" y="652" font-family="Arial, Helvetica, sans-serif" font-size="16" fill="#222222">Encodes history into a latent state embedding</text>
+  <text x="56" y="680" font-family="Arial, Helvetica, sans-serif" font-size="16" fill="#222222">Eh in R^d</text>
+
+  <line x1="185" y1="734" x2="185" y2="774" stroke="#1f4da3" stroke-width="3"/>
+  <polygon points="185,788 177,772 193,772" fill="#1f4da3"/>
+
+  <rect x="40" y="794" width="290" height="150" rx="14" fill="#ffffff" stroke="#7aa7f0" stroke-width="2"/>
+  <text x="56" y="824" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#173b7a">History embedding</text>
+  <text x="56" y="854" font-family="Arial, Helvetica, sans-serif" font-size="16" fill="#222222">Shared input to all public branches</text>
+  <text x="56" y="882" font-family="Arial, Helvetica, sans-serif" font-size="16" fill="#222222">Direct policy baselines</text>
+  <text x="56" y="910" font-family="Arial, Helvetica, sans-serif" font-size="16" fill="#222222">Predicted-code IDM idea</text>
+  <text x="56" y="938" font-family="Arial, Helvetica, sans-serif" font-size="16" fill="#222222">Privileged GT-code diagnostic</text>
+
+  <rect x="370" y="110" width="700" height="860" rx="16" fill="#fbfffb" stroke="#1f8a4c" stroke-width="3"/>
+  <rect x="370" y="110" width="700" height="48" rx="16" fill="#1f8a4c"/>
+  <text x="720" y="143" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#ffffff">2. Three Control Branches</text>
+
+  <rect x="392" y="182" width="500" height="188" rx="14" fill="#ffffff" stroke="#6bc38e" stroke-width="2"/>
+  <text x="412" y="214" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#1f8a4c">A. Direct policy baselines</text>
+  <text x="412" y="242" font-family="Arial, Helvetica, sans-serif" font-size="16" fill="#222222">Published in Phase 1. These rows are deployable direct policies.</text>
+  <rect x="420" y="264" width="186" height="42" rx="10" fill="#f3fbf6" stroke="#6bc38e" stroke-width="2"/>
+  <text x="513" y="292" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="700" fill="#1d572f">BC_vis</text>
+  <rect x="420" y="316" width="186" height="42" rx="10" fill="#f3fbf6" stroke="#6bc38e" stroke-width="2"/>
+  <text x="513" y="344" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="700" fill="#1d572f">BC_vis_proprio</text>
+  <rect x="420" y="368" width="186" height="42" rx="10" fill="#f3fbf6" stroke="#6bc38e" stroke-width="2"/>
+  <text x="513" y="396" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="700" fill="#1d572f">VW2_hidden_mlp_action_head</text>
+  <line x1="606" y1="284" x2="700" y2="326" stroke="#444444" stroke-width="2"/>
+  <line x1="606" y1="336" x2="700" y2="326" stroke="#444444" stroke-width="2"/>
+  <line x1="606" y1="388" x2="700" y2="326" stroke="#444444" stroke-width="2"/>
+  <rect x="700" y="292" width="154" height="68" rx="12" fill="#ffffff" stroke="#aaaaaa" stroke-width="2"/>
+  <text x="777" y="320" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#222222">Action chunk</text>
+  <text x="777" y="346" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="15" fill="#555555">direct mapping to actions</text>
+
+  <rect x="912" y="214" width="132" height="86" rx="12" fill="#effaf2" stroke="#6bc38e" stroke-width="2"/>
+  <text x="978" y="246" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#1f8a4c">Published</text>
+  <text x="978" y="272" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#1f8a4c">in Phase 1</text>
+
+  <rect x="392" y="392" width="500" height="238" rx="14" fill="#fffaf2" stroke="#d79c2a" stroke-width="2"/>
+  <text x="412" y="424" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#af6b00">B. Predicted-code IDM</text>
+  <text x="412" y="452" font-family="Arial, Helvetica, sans-serif" font-size="16" fill="#222222">Main research idea: predict future latent codes before action decoding.</text>
+  <rect x="420" y="480" width="180" height="74" rx="12" fill="#ffffff" stroke="#e1b766" stroke-width="2"/>
+  <text x="510" y="510" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#7b4c00">Latent planner</text>
+  <text x="510" y="536" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="15" fill="#555555">predicts z_future</text>
+  <rect x="640" y="480" width="110" height="74" rx="12" fill="#ffffff" stroke="#e1b766" stroke-width="2"/>
+  <text x="695" y="510" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#7b4c00">Verifier</text>
+  <text x="695" y="536" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="15" fill="#555555">optional</text>
+  <rect x="420" y="570" width="330" height="74" rx="12" fill="#ffffff" stroke="#e1b766" stroke-width="2"/>
+  <text x="585" y="600" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#7b4c00">History-aware IDM</text>
+  <text x="585" y="626" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="15" fill="#555555">conditioned on Eh and predicted z_future</text>
+  <line x1="600" y1="517" x2="640" y2="517" stroke="#af6b00" stroke-width="2" stroke-dasharray="8 6"/>
+  <line x1="510" y1="554" x2="510" y2="570" stroke="#af6b00" stroke-width="2"/>
+  <polygon points="510,580 502,564 518,564" fill="#af6b00"/>
+  <line x1="750" y1="607" x2="840" y2="607" stroke="#444444" stroke-width="2"/>
+  <rect x="840" y="574" width="130" height="66" rx="12" fill="#ffffff" stroke="#aaaaaa" stroke-width="2"/>
+  <text x="905" y="600" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#222222">Action chunk</text>
+  <text x="905" y="624" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#555555">intended deployable path</text>
+
+  <rect x="912" y="430" width="132" height="110" rx="12" fill="#fff7e8" stroke="#e1b766" stroke-width="2"/>
+  <text x="978" y="462" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#af6b00">Not published</text>
+  <text x="978" y="488" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#af6b00">in Phase 1</text>
+  <text x="978" y="518" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#666666">No public</text>
+  <text x="978" y="538" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#666666">predicted-code</text>
+
+  <rect x="392" y="652" width="500" height="270" rx="14" fill="#faf7ff" stroke="#7b4dc1" stroke-width="2"/>
+  <text x="412" y="684" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#6d34b0">C. Privileged GT-code diagnostic</text>
+  <text x="412" y="712" font-family="Arial, Helvetica, sans-serif" font-size="16" fill="#222222">Upper-bound diagnostic only. Uses future GT code unavailable at real deployment time.</text>
+  <rect x="420" y="744" width="170" height="84" rx="12" fill="#ffffff" stroke="#b08de8" stroke-width="2"/>
+  <text x="505" y="774" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#6d34b0">Ground-truth</text>
+  <text x="505" y="800" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="15" fill="#555555">future latent code</text>
+  <rect x="620" y="744" width="250" height="84" rx="12" fill="#ffffff" stroke="#b08de8" stroke-width="2"/>
+  <text x="745" y="774" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#6d34b0">History-aware IDM</text>
+  <text x="745" y="800" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="15" fill="#555555">conditioned on Eh and GT z_future</text>
+  <line x1="590" y1="786" x2="620" y2="786" stroke="#6d34b0" stroke-width="2"/>
+  <polygon points="620,786 606,778 606,794" fill="#6d34b0"/>
+  <rect x="912" y="732" width="132" height="110" rx="12" fill="#f4efff" stroke="#b08de8" stroke-width="2"/>
+  <text x="978" y="764" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#6d34b0">Published</text>
+  <text x="978" y="790" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#6d34b0">diagnostic</text>
+  <text x="978" y="820" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#666666">privileged only</text>
+
+  <rect x="1090" y="110" width="490" height="860" rx="16" fill="#fbf8ff" stroke="#6e3bc0" stroke-width="3"/>
+  <rect x="1090" y="110" width="490" height="48" rx="16" fill="#6e3bc0"/>
+  <text x="1335" y="143" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#ffffff">3. Public gate status &amp; reliability cleanup</text>
+
+  <rect x="1112" y="182" width="446" height="186" rx="14" fill="#ffffff" stroke="#c1a3ea" stroke-width="2"/>
+  <text x="1335" y="214" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#6e3bc0">3.1 What the public repo claims</text>
+  <text x="1136" y="246" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="700" fill="#11823b">✓ Publishes offline CALVIN metrics for direct policies</text>
+  <text x="1136" y="278" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="700" fill="#11823b">✓ Publishes privileged GT-code diagnostics</text>
+  <text x="1136" y="310" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="700" fill="#b32727">✗ Does not publish a predicted-code CALVIN claim</text>
+  <text x="1136" y="342" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="700" fill="#c37a00">! Closed-loop evaluator in this snapshot is mock-only</text>
+
+  <rect x="1112" y="390" width="446" height="286" rx="14" fill="#ffffff" stroke="#c1a3ea" stroke-width="2"/>
+  <text x="1335" y="422" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#6e3bc0">Phase 1 offline CALVIN (bugfix-rerun numbers)</text>
+
+  <rect x="1130" y="448" width="220" height="38" fill="#efe6ff" stroke="#c1a3ea" stroke-width="1.5"/>
+  <rect x="1350" y="448" width="82" height="38" fill="#efe6ff" stroke="#c1a3ea" stroke-width="1.5"/>
+  <rect x="1432" y="448" width="72" height="38" fill="#efe6ff" stroke="#c1a3ea" stroke-width="1.5"/>
+  <rect x="1504" y="448" width="36" height="38" fill="#efe6ff" stroke="#c1a3ea" stroke-width="1.5"/>
+  <text x="1240" y="473" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="15" font-weight="700" fill="#4a287f">Controller</text>
+  <text x="1391" y="466" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#4a287f">Action</text>
+  <text x="1391" y="482" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#4a287f">NLL</text>
+  <text x="1468" y="466" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#4a287f">MSE</text>
+  <text x="1522" y="473" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#4a287f">Status</text>
+
+  <rect x="1130" y="486" width="220" height="38" fill="#ffffff" stroke="#c1a3ea" stroke-width="1"/>
+  <rect x="1350" y="486" width="82" height="38" fill="#ffffff" stroke="#c1a3ea" stroke-width="1"/>
+  <rect x="1432" y="486" width="72" height="38" fill="#ffffff" stroke="#c1a3ea" stroke-width="1"/>
+  <rect x="1504" y="486" width="36" height="38" fill="#ffffff" stroke="#c1a3ea" stroke-width="1"/>
+  <text x="1140" y="510" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#222222">VW2_hidden_mlp_action_head</text>
+  <text x="1391" y="510" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#222222">0.023</text>
+  <text x="1468" y="510" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#222222">0.179</text>
+  <text x="1522" y="510" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#11823b">✓</text>
+
+  <rect x="1130" y="524" width="220" height="38" fill="#fbfbff" stroke="#c1a3ea" stroke-width="1"/>
+  <rect x="1350" y="524" width="82" height="38" fill="#fbfbff" stroke="#c1a3ea" stroke-width="1"/>
+  <rect x="1432" y="524" width="72" height="38" fill="#fbfbff" stroke="#c1a3ea" stroke-width="1"/>
+  <rect x="1504" y="524" width="36" height="38" fill="#fbfbff" stroke="#c1a3ea" stroke-width="1"/>
+  <text x="1140" y="548" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#222222">History_IDM_GTcode</text>
+  <text x="1391" y="548" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#222222">0.907</text>
+  <text x="1468" y="548" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#222222">0.178</text>
+  <text x="1522" y="548" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#6d34b0">△</text>
+
+  <rect x="1130" y="562" width="220" height="38" fill="#ffffff" stroke="#c1a3ea" stroke-width="1"/>
+  <rect x="1350" y="562" width="82" height="38" fill="#ffffff" stroke="#c1a3ea" stroke-width="1"/>
+  <rect x="1432" y="562" width="72" height="38" fill="#ffffff" stroke="#c1a3ea" stroke-width="1"/>
+  <rect x="1504" y="562" width="36" height="38" fill="#ffffff" stroke="#c1a3ea" stroke-width="1"/>
+  <text x="1140" y="586" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#222222">BC_vis</text>
+  <text x="1391" y="586" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#222222">1.592</text>
+  <text x="1468" y="586" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#222222">0.181</text>
+  <text x="1522" y="586" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#11823b">✓</text>
+
+  <rect x="1130" y="600" width="220" height="38" fill="#fbfbff" stroke="#c1a3ea" stroke-width="1"/>
+  <rect x="1350" y="600" width="82" height="38" fill="#fbfbff" stroke="#c1a3ea" stroke-width="1"/>
+  <rect x="1432" y="600" width="72" height="38" fill="#fbfbff" stroke="#c1a3ea" stroke-width="1"/>
+  <rect x="1504" y="600" width="36" height="38" fill="#fbfbff" stroke="#c1a3ea" stroke-width="1"/>
+  <text x="1140" y="624" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#222222">BC_vis_proprio</text>
+  <text x="1391" y="624" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#222222">1.385</text>
+  <text x="1468" y="624" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#222222">0.191</text>
+  <text x="1522" y="624" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#11823b">✓</text>
+
+  <rect x="1130" y="638" width="220" height="38" fill="#ffffff" stroke="#c1a3ea" stroke-width="1"/>
+  <rect x="1350" y="638" width="82" height="38" fill="#ffffff" stroke="#c1a3ea" stroke-width="1"/>
+  <rect x="1432" y="638" width="72" height="38" fill="#ffffff" stroke="#c1a3ea" stroke-width="1"/>
+  <rect x="1504" y="638" width="36" height="38" fill="#ffffff" stroke="#c1a3ea" stroke-width="1"/>
+  <text x="1140" y="662" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#222222">Pair_IDM_GTcode</text>
+  <text x="1391" y="662" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#222222">1.387</text>
+  <text x="1468" y="662" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#222222">0.184</text>
+  <text x="1522" y="662" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" fill="#6d34b0">△</text>
+
+  <text x="1335" y="700" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#555555">Lower offline NLL/MSE is better. GT-code rows remain privileged diagnostics.</text>
+
+  <rect x="1112" y="698" width="446" height="208" rx="14" fill="#ffffff" stroke="#c1a3ea" stroke-width="2"/>
+  <text x="1335" y="730" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#6e3bc0">3.2 Reliability / cleanup contributions</text>
+  <text x="1136" y="768" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="700" fill="#1f4da3">Manifest + cache validation</text>
+  <text x="1136" y="794" font-family="Arial, Helvetica, sans-serif" font-size="15" fill="#444444">Ensure data splits and artifacts are consistent.</text>
+  <text x="1136" y="834" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="700" fill="#1f8a4c">Checkpoint and path guards</text>
+  <text x="1136" y="860" font-family="Arial, Helvetica, sans-serif" font-size="15" fill="#444444">Catch planner / adapter path mistakes before silent failure.</text>
+  <text x="1136" y="900" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="700" fill="#af6b00">Baseline architecture selection fix</text>
+  <text x="1136" y="926" font-family="Arial, Helvetica, sans-serif" font-size="15" fill="#444444">BC and MLP rows now use their intended policy heads during training.</text>
+
+  <rect x="1112" y="924" width="446" height="22" rx="8" fill="#f4efff" stroke="#c1a3ea" stroke-width="1.5"/>
+  <text x="1335" y="940" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" fill="#5d319e">Goal: keep the public repo auditable without overstating predicted-code CALVIN evidence.</text>
+
+  <text x="800" y="1004" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#555555">Updated from a user-provided draft. The original draft image contained stale Phase 1 metrics, so this published SVG refreshes the numbers to the current bugfix-rerun state.</text>
+</svg>
