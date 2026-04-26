@@ -23,10 +23,6 @@ The current public gate is an offline CALVIN package plus mock closed-loop smoke
 
 The upstream VideoWorld2 figures are kept for attribution/context in [`assets/readme_figs/Fig1_final.png`](assets/readme_figs/Fig1_final.png) and [`assets/readme_figs/method_final.png`](assets/readme_figs/method_final.png).
 
-![Public gate overview](assets/readme_figs/repo_gate_overview.svg)
-
-This overview figure is adapted from a user-provided draft and refreshed to match the current bugfix-rerun metrics committed in this repository. The original draft image was not published verbatim because its Phase 1 table contained stale numbers.
-
 ## Repository Layout
 
 ```text

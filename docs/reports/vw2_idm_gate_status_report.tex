@@ -1,7 +1,6 @@
 \documentclass[11pt]{article}
 \usepackage[margin=0.8in]{geometry}
 \usepackage{array}
-\usepackage{graphicx}
 \usepackage{hyperref}
 \usepackage{xcolor}
 
@@ -15,14 +14,6 @@
 \section*{Verdict}
 
 The current repository supports an offline CALVIN gate and a mock-only closed-loop smoke path. It still does not contain a valid real CALVIN closed-loop adjudication. The real closed-loop path is blocked by two concrete facts: the repository evaluator rejects non-mock datasets, and the local rescue bundle does not contain raw CALVIN frame/action files needed by the dataset loader.
-
-\section*{Repository Overview Figure}
-
-\begin{figure}[h]
-\centering
-\includegraphics[width=\textwidth]{../../assets/readme_figs/repo_gate_overview.png}
-\caption{Public repository overview refreshed to match the current committed bugfix-rerun metrics and status boundary. The original user-provided draft was not published verbatim because its Phase 1 table contained stale numbers.}
-\end{figure}
 
 \section*{Reliability Changes}
 
@@ -40,7 +31,7 @@ The current repository supports an offline CALVIN gate and a mock-only closed-lo
 
 \section*{Phase 1 Offline CALVIN Metrics}
 
-The table below reflects the current committed \texttt{results/phase1\_offline\_metrics.json} values. It supersedes the earlier stale public table after rerunning Phase 1 with the adapter-path fix and the baseline architecture-selection fix. This remains an offline gate over the configured validation latent-cache subset, not a real CALVIN closed-loop claim. Action NLL and action MSE are raw-vector losses over the stored CALVIN action representation, and offline jerk is computed on the predicted action chunk rather than on a real executed closed-loop stream.
+The table below reflects the current committed \texttt{results/phase1\_offline\_metrics.json} values. These values are regenerated from the \texttt{offline\_eval.json} files in the non-versioned rescued Phase 1 bundle. They are annotation-window-weighted metrics over the configured 1,024-record validation latent-cache subset, not a full 12,881-window validation replay. They are not a fresh local regeneration under the current stricter cache/tokenizer guards because raw CALVIN frame/action files and a complete official tokenizer checkpoint are not available in this checkout. Action NLL and action MSE are raw-vector losses over the stored CALVIN action representation, and offline jerk is computed on the predicted action chunk rather than on a real executed closed-loop stream.
 
 \begin{center}
 \begingroup
@@ -50,17 +41,17 @@ The table below reflects the current committed \texttt{results/phase1\_offline\_
 \hline
 Controller & Action NLL & Action MSE & Jerk & Interpretation \\
 \hline
-VW2\_hidden\_mlp\_action\_head & 0.02332 & 0.17899 & 0.00356026 & direct MLP policy \\
-History\_IDM\_GTcode & 0.90677 & 0.17816 & 0.00000010 & privileged GT-code upper bound \\
-BC\_vis\_proprio & 1.38503 & 0.19142 & 0.00000064 & direct visual+proprio policy \\
-Pair\_IDM\_GTcode & 1.38689 & 0.18394 & 0.00000206 & privileged GT-code upper bound \\
-BC\_vis & 1.59221 & 0.18078 & 0.00000014 & direct visual policy \\
+VW2\_hidden\_mlp\_action\_head & -0.05002 & 0.08925 & 0.00671523 & direct MLP policy \\
+BC\_vis\_proprio & 0.72483 & 0.21353 & 0.00000368 & direct visual+proprio policy \\
+History\_IDM\_GTcode & 0.99295 & 0.15558 & 0.00000764 & privileged GT-code upper bound \\
+Pair\_IDM\_GTcode & 1.01428 & 0.23940 & 0.00000024 & privileged GT-code upper bound \\
+BC\_vis & 1.23764 & 0.18699 & 0.00000009 & direct visual policy \\
 \hline
 \end{tabular}
 \endgroup
 \end{center}
 
-The GT-code rows consume future latent codes from the target trajectory. They are useful diagnostic upper bounds, but they are not deployable policies. The deployable rows in this table are the direct-policy baselines and the MLP action head. The public JSON/CSV set \texttt{planner\_code\_accuracy} to zero for these rows because no predicted-code planner result is published in this snapshot.
+The GT-code rows consume future latent codes from the target trajectory. They are useful diagnostic upper bounds, but they are not deployable policies. The deployable rows in this table are the direct-policy baselines and the MLP action head. The public JSON/CSV set \texttt{planner\_code\_accuracy} to null or blank for these rows because no predicted-code planner result is published in this snapshot.
 
 \section*{Phase 0 Mock Smoke}
 
