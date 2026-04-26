@@ -1,10 +1,11 @@
 \documentclass[11pt]{article}
-\usepackage[margin=0.8in]{geometry}
+\usepackage[margin=0.85in]{geometry}
 \usepackage{array}
-\usepackage{hyperref}
-\usepackage{xcolor}
 
-\title{VideoWorld2-IDM CALVIN Gate Status Report}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+
+\title{VideoWorld2-IDM CALVIN Gate Report}
 \author{YichengDraw / reliability cleanup}
 \date{2026-04-26}
 
@@ -13,25 +14,11 @@
 
 \section*{Verdict}
 
-The current repository supports an offline CALVIN gate and a mock-only closed-loop smoke path. It still does not contain a valid real CALVIN closed-loop adjudication. The real closed-loop path is blocked by two concrete facts: the repository evaluator rejects non-mock datasets, and the local rescue bundle does not contain raw CALVIN frame/action files needed by the dataset loader.
+Hold the VideoWorld2-IDM mainline. The public repository currently supports an offline CALVIN gate and mock closed-loop smoke tests. It has no real CALVIN closed-loop result, so the final go criterion is unmet.
 
-\section*{Reliability Changes}
+\section*{Phase 1 Offline Gate}
 
-\begin{itemize}
-  \item The latent planner now uses a causal decoder mask, preventing teacher-forced target tokens from leaking future labels into earlier predictions.
-  \item Latent caches and window indexes now carry validation metadata and content digests; saved window payloads are re-derived before reuse, and stale specs, stale adapter checkpoint contents, stale split identity, stale full-span CALVIN frame provenance, duplicate cache keys, or key-set mismatch now fail closed.
-  \item Official dLDM tokenizer checkpoints are rejected unless they cover the encode path used for cache extraction and predicted-code embeddings.
-  \item Train and validation manifests are checked for shared episode IDs, shared file-backed episode sources, byte-level and semantic copied file contents, copied CALVIN frame contents across train/validation, duplicate copied CALVIN frame contents under different roots within a split, and train/validation CALVIN frame-span overlap before dataset construction. Same-root within-split CALVIN span overlaps are recorded as annotation-window weighting.
-  \item DataLoader workers and generators are seeded from the experiment seed, and evaluation entrypoints request deterministic CUDA behavior by default.
-  \item Direct-policy, MLP, planner, verifier, teacher, resume, and CLI checkpoints are validated against explicit architecture, IDM conditioning metadata, planner/teacher checkpoint identity, and path guards before loading; distillation now preserves predicted-code teacher conditioning.
-  \item Verifier-assisted evaluation reloads the verifier's paired state encoder instead of feeding a verifier trained on one encoder with tokens from another encoder.
-  \item Evaluation and diagnostic JSON writers reject non-finite metrics before publication, and verifier reranking applies the jerk penalty per candidate instead of using a batch-global scalar.
-  \item Cross-directory config inheritance preserves the directory that defined each relative path, and repeated relative path strings are resolved by config key path to avoid source-directory collisions.
-\end{itemize}
-
-\section*{Phase 1 Offline CALVIN Metrics}
-
-The table below reflects the current committed \texttt{results/phase1\_offline\_metrics.json} values. These values are regenerated from the \texttt{offline\_eval.json} files in the non-versioned rescued Phase 1 bundle. They are annotation-window-weighted metrics over the configured 1,024-record validation latent-cache subset, not a full 12,881-window validation replay. They are not a fresh local regeneration under the current stricter cache/tokenizer guards because raw CALVIN frame/action files and a complete official tokenizer checkpoint are not available in this checkout. Action NLL and action MSE are raw-vector losses over the stored CALVIN action representation, and offline jerk is computed on the predicted action chunk rather than on a real executed closed-loop stream.
+These are the audited public values in \texttt{results/phase1\_offline\_metrics.json}. They come from rescued \texttt{offline\_eval.json} outputs over the configured 1,024-record validation latent-cache subset. Lower is better for Action NLL, MSE, and Jerk.
 
 \begin{center}
 \begingroup
@@ -41,17 +28,17 @@ The table below reflects the current committed \texttt{results/phase1\_offline\_
 \hline
 Controller & Action NLL & Action MSE & Jerk & Interpretation \\
 \hline
-VW2\_hidden\_mlp\_action\_head & -0.05002 & 0.08925 & 0.00671523 & direct MLP policy \\
-BC\_vis\_proprio & 0.72483 & 0.21353 & 0.00000368 & direct visual+proprio policy \\
-History\_IDM\_GTcode & 0.99295 & 0.15558 & 0.00000764 & privileged GT-code upper bound \\
-Pair\_IDM\_GTcode & 1.01428 & 0.23940 & 0.00000024 & privileged GT-code upper bound \\
-BC\_vis & 1.23764 & 0.18699 & 0.00000009 & direct visual policy \\
+VW2\_hidden\_mlp\_action\_head & -0.05002 & 0.08925 & 0.00671523 & deployable MLP policy \\
+BC\_vis\_proprio & 0.72483 & 0.21353 & 0.00000368 & deployable visual+proprio policy \\
+History\_IDM\_GTcode & 0.99295 & 0.15558 & 0.00000764 & privileged GT-code diagnostic \\
+Pair\_IDM\_GTcode & 1.01428 & 0.23940 & 0.00000024 & privileged GT-code diagnostic \\
+BC\_vis & 1.23764 & 0.18699 & 0.00000009 & deployable visual policy \\
 \hline
 \end{tabular}
 \endgroup
 \end{center}
 
-The GT-code rows consume future latent codes from the target trajectory. They are useful diagnostic upper bounds, but they are not deployable policies. The deployable rows in this table are the direct-policy baselines and the MLP action head. The public JSON/CSV set \texttt{planner\_code\_accuracy} to null or blank for these rows because no predicted-code planner result is published in this snapshot.
+The MLP action head is the strongest deployable offline row. GT-code rows depend on future latent labels and serve as privileged diagnostics only. Offline jerk is computed on predicted action chunks. No predicted-code planner row is published.
 
 \section*{Phase 0 Mock Smoke}
 
@@ -59,30 +46,36 @@ The GT-code rows consume future latent codes from the target trajectory. They ar
 \begingroup
 \small
 \setlength{\tabcolsep}{4pt}
-\begin{tabular}{>{\raggedright\arraybackslash}p{0.30\linewidth}>{\raggedright\arraybackslash}p{0.24\linewidth}>{\raggedright\arraybackslash}p{0.34\linewidth}}
+\begin{tabular}{>{\raggedright\arraybackslash}p{0.32\linewidth}>{\raggedright\arraybackslash}p{0.30\linewidth}>{\raggedright\arraybackslash}p{0.28\linewidth}}
 \hline
-Check & Result & Interpretation \\
+Check & Result & Use \\
 \hline
-Oracle replay & 100\% success on 24 validation episodes & synthetic mock oracle diagnostic \\
-BC overfit closed loop & 33.33\% success, offline MSE 0.00283 & synthetic mock smoke policy \\
-History-IDM GT-code overfit closed loop & 16.67\% success, offline MSE 0.00346 & privileged future-code mock diagnostic \\
+Oracle replay & 100\% success on 24 validation episodes & synthetic oracle sanity check \\
+BC overfit closed loop & 33.33\% success, offline MSE 0.00283 & synthetic policy smoke test \\
+History-IDM GT-code overfit & 16.67\% success, offline MSE 0.00346 & privileged diagnostic smoke test \\
 \hline
 \end{tabular}
 \endgroup
 \end{center}
 
-These smoke runs validate plumbing on a synthetic mock environment. They do not prove real CALVIN closed-loop behavior. The repository also includes machine-readable mock-only rollout provenance in \texttt{results/phase0\_rollout\_metadata.json}; the public summary JSON duplicates the GT-code privilege flag inside the affected rows and leaves planner-code accuracy null when no predicted-code planner is evaluated.
+Treat these rows as plumbing checks only.
 
-\section*{Artifact Boundary}
+\section*{Reliability Work}
 
-The non-versioned rescue bundle contains manifests, window indexes, latent caches, checkpoint files, resolved configs, and offline-evaluation outputs. It does not contain raw CALVIN RGB/proprio/action frame files. The rescued manifests still reference the original remote Linux roots, so local replay requires remapping or restoring the raw dataset. The conditional real closed-loop goal remains open until the real CALVIN environment and raw data are available within the run budget policy.
+\begin{itemize}
+  \item Planner masking prevents teacher-forced future-token leakage.
+  \item Data and cache guards validate split identity, window payloads, latent-cache keys, tokenizer coverage, and CALVIN frame-span overlap.
+  \item Checkpoint guards validate controller architecture, conditioning mode, planner/teacher identity, and path resolution before load.
+  \item Result packaging records provenance, privilege/deployability flags, metric origin, and non-finite metric checks.
+\end{itemize}
 
-The locally observed \texttt{ldm\_tokenizer\_training\_init\_weights.pt} file is not accepted as a verified official tokenizer for fresh cache extraction because it does not cover all encode-path parameters. Fresh official-cache extraction requires a complete tokenizer checkpoint, or an explicitly diagnostic partial-checkpoint override.
+\section*{Boundary}
 
-The committed \texttt{results/rescued\_artifact\_audit.json} records that rescued train and validation window payloads match the current window builder: 2,102 train windows and 12,881 validation windows. It checks latent-cache \texttt{(episode\_id, t)} keys against the current train-window builder and the configured validation-window prefix. It also records same-root within-split CALVIN span overlaps, which are interpreted as annotation-window weighting rather than independent raw-frame evidence. Because the rescued manifests reference remote Linux roots and raw frames are absent locally, this audit does not prove byte-level raw-frame content separation for those remote roots.
-
-\section*{Public Files}
-
-The public result tables and rescued-artifact audit are committed under \texttt{results/}. The architecture diagrams are committed as source Mermaid files under \texttt{docs/architecture/} and rendered images under \texttt{assets/readme\_figs/}. Stale report copies and unused demo assets were removed from the public repository.
+\begin{itemize}
+  \item Raw CALVIN RGB/proprio/action files are absent from the public repository.
+  \item Rescued manifests point to original remote Linux paths; replay needs the restored dataset or explicit path remapping.
+  \item Fresh cache extraction needs a complete official dLDM tokenizer checkpoint.
+  \item A real verdict needs one missing experiment: fixed-episode CALVIN closed-loop evaluation with identical starts, instructions, camera pipeline, action normalization, clipping, and timeouts across controllers.
+\end{itemize}
 
 \end{document}
